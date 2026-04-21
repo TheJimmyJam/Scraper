@@ -884,6 +884,7 @@ function AdminView({ scrapeRuns, onRunScraper, apiStatus, onCheckApi, onViewRun,
   const [customCats,   setCustomCats]   = useState([])
   const [customInput,  setCustomInput]  = useState('')
   const [resetStep,   setResetStep]   = useState(0)  // 0=idle, 1=first confirm, 2=resetting
+  const logBoxRef = useRef(null)
 
   const toggleCat = (cat) => setSelectedCats(prev => {
     const next = new Set(prev)
@@ -920,19 +921,40 @@ function AdminView({ scrapeRuns, onRunScraper, apiStatus, onCheckApi, onViewRun,
   const handleRun = async () => {
     if (totalCatCount === 0) return
     setRunning(true)
-    setLog(['Starting scraper...'])
+    setLog(['⏳ Starting scraper...'])
+
     try {
-      const res = await onRunScraper({
+      await onRunScraper({
         location,
         limit: parseInt(limit),
         send_emails: sendEmails,
         categories: [...selectedCats, ...customCats],
       })
-      setLog(prev => [...prev, ...res.log || ['Done.']])
+
+      // Poll /status every 2s to stream live server logs
+      const poll = setInterval(async () => {
+        try {
+          const res = await fetch(`${LOCAL_API}/status`, { signal: AbortSignal.timeout(3000) })
+          const data = await res.json()
+          if (data.log?.length) {
+            setLog(data.log)
+            // Auto-scroll to bottom
+            if (logBoxRef.current) logBoxRef.current.scrollTop = logBoxRef.current.scrollHeight
+          }
+          if (!data.running) {
+            clearInterval(poll)
+            setRunning(false)
+          }
+        } catch {
+          clearInterval(poll)
+          setRunning(false)
+        }
+      }, 2000)
+
     } catch (e) {
-      setLog(prev => [...prev, `Error: ${e.message}`])
+      setLog([`Error: ${e.message}`])
+      setRunning(false)
     }
-    setRunning(false)
   }
 
   return (
@@ -1036,11 +1058,24 @@ function AdminView({ scrapeRuns, onRunScraper, apiStatus, onCheckApi, onViewRun,
 
         {/* Live log */}
         <Card>
-          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 14 }}>Scraper Log</div>
-          <div style={{ background: '#0a0a14', borderRadius: 8, padding: 12, height: 200, overflowY: 'auto', fontFamily: 'monospace', fontSize: 12 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 14 }}>
+            Live Log {running && <span style={{ color: '#f39c12', fontWeight: 400, fontSize: 11 }}>● streaming</span>}
+          </div>
+          <div ref={logBoxRef} style={{ background: '#0a0a14', borderRadius: 8, padding: 12, height: 260, overflowY: 'auto', fontFamily: 'monospace', fontSize: 12 }}>
             {log.length === 0
               ? <span style={{ color: 'var(--muted)' }}>Waiting to start...</span>
-              : log.map((l, i) => <div key={i} style={{ color: l.startsWith('Error') ? '#e74c3c' : '#2ecc71', marginBottom: 2 }}>{l}</div>)}
+              : log.map((l, i) => (
+                <div key={i} style={{
+                  color: l.includes('Error') || l.includes('error') ? '#e74c3c'
+                       : l.includes('✓') || l.includes('complete') ? '#2ecc71'
+                       : l.includes('→') || l.includes('Scraping') ? '#a78bfa'
+                       : l.includes('Found') || l.includes('Saved') ? '#c9a96e'
+                       : '#7ec8a0',
+                  marginBottom: 3, lineHeight: 1.5,
+                }}>
+                  {l}
+                </div>
+              ))}
           </div>
         </Card>
       </div>
