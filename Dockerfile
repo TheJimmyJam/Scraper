@@ -21,5 +21,5 @@ COPY . .
 
 EXPOSE 8000
 
-# Shell form so $PORT gets expanded correctly
-CMD python -m uvicorn server:app --host 0.0.0.0 --port $PORT
+# Run server.py directly — it reads PORT from env via os.getenv("PORT", 8000)
+CMD ["python", "server.py"]
