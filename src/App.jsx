@@ -653,13 +653,14 @@ const ALL_CATEGORIES = [
   'Plumber', 'Electrician', 'Dentist', 'Gym / Fitness', 'Auto Repair', 'Landscaping'
 ]
 
-function AdminView({ scrapeRuns, onRunScraper, apiStatus, onCheckApi, onViewRun }) {
+function AdminView({ scrapeRuns, onRunScraper, apiStatus, onCheckApi, onViewRun, onResetDb }) {
   const [location,    setLocation]    = useState('Dallas, TX')
   const [limit,       setLimit]       = useState('10')
   const [sendEmails,  setSendEmails]  = useState(false)
   const [running,     setRunning]     = useState(false)
   const [log,         setLog]         = useState([])
   const [selectedCats, setSelectedCats] = useState(new Set(ALL_CATEGORIES))
+  const [resetStep,   setResetStep]   = useState(0)  // 0=idle, 1=first confirm, 2=resetting
 
   const toggleCat = (cat) => setSelectedCats(prev => {
     const next = new Set(prev)
@@ -669,6 +670,15 @@ function AdminView({ scrapeRuns, onRunScraper, apiStatus, onCheckApi, onViewRun 
   const toggleAll = () => setSelectedCats(
     selectedCats.size === ALL_CATEGORIES.length ? new Set() : new Set(ALL_CATEGORIES)
   )
+
+  const handleResetClick = async () => {
+    if (resetStep === 0) { setResetStep(1); return }
+    if (resetStep === 1) {
+      setResetStep(2)
+      await onResetDb()
+      setResetStep(0)
+    }
+  }
 
   const handleRun = async () => {
     if (selectedCats.size === 0) return
@@ -773,6 +783,27 @@ function AdminView({ scrapeRuns, onRunScraper, apiStatus, onCheckApi, onViewRun 
         </Card>
       </div>
 
+      {/* Nuclear reset */}
+      <Card style={{ marginBottom: 16, borderColor: resetStep === 1 ? '#e74c3c' : 'var(--border)', background: resetStep === 1 ? '#1a0505' : 'var(--surface)' }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: '#e74c3c', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>☢ Danger Zone</div>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
+          <div style={{ fontSize: 13, color: 'var(--muted)', lineHeight: 1.6 }}>
+            <strong style={{ color: 'var(--text)' }}>Reset Database</strong> — permanently deletes all businesses, emails, follow-ups, feedback, and scrape history. This cannot be undone.
+          </div>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexShrink: 0 }}>
+            {resetStep === 1 && (
+              <span style={{ fontSize: 12, color: '#e74c3c', fontWeight: 700 }}>⚠ Are you sure? Click again to confirm.</span>
+            )}
+            {resetStep > 0 && (
+              <Btn variant="ghost" size="sm" onClick={() => setResetStep(0)} disabled={resetStep === 2}>Cancel</Btn>
+            )}
+            <Btn variant="danger" size="sm" onClick={handleResetClick} disabled={resetStep === 2}>
+              {resetStep === 0 ? '🗑 Reset Database' : resetStep === 1 ? '💀 Yes, Wipe Everything' : '⏳ Resetting...'}
+            </Btn>
+          </div>
+        </div>
+      </Card>
+
       {/* Scrape run history */}
       <Card>
         <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 14 }}>Scrape History</div>
@@ -782,7 +813,7 @@ function AdminView({ scrapeRuns, onRunScraper, apiStatus, onCheckApi, onViewRun 
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
             <thead>
               <tr>
-                {['Started', 'Location', 'Status', 'Found', 'Emails Sent', 'Duration', ''].map(h => (
+                {['Started', 'Location', 'Status', 'Categories', 'Found', 'Emails Sent', 'Duration', ''].map(h => (
                   <th key={h} style={{ padding: '8px 10px', textAlign: 'left', fontSize: 11, color: 'var(--muted)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1 }}>{h}</th>
                 ))}
               </tr>
@@ -791,6 +822,9 @@ function AdminView({ scrapeRuns, onRunScraper, apiStatus, onCheckApi, onViewRun 
               {scrapeRuns.map(r => {
                 const duration = r.completed_at ? Math.round((new Date(r.completed_at) - new Date(r.started_at)) / 1000) : null
                 const clickable = r.status === 'completed' && r.businesses_found > 0
+                const cats = r.categories && r.categories !== 'all'
+                  ? r.categories.split(',').map(c => c.trim()).filter(Boolean)
+                  : null
                 return (
                   <tr key={r.id}
                     onClick={() => clickable && onViewRun(r)}
@@ -802,6 +836,14 @@ function AdminView({ scrapeRuns, onRunScraper, apiStatus, onCheckApi, onViewRun 
                     <td style={{ padding: '9px 10px' }}>{r.location}</td>
                     <td style={{ padding: '9px 10px' }}>
                       <span style={{ color: r.status === 'completed' ? '#2ecc71' : r.status === 'failed' ? '#e74c3c' : '#f39c12', fontWeight: 700, fontSize: 12 }}>{r.status.toUpperCase()}</span>
+                    </td>
+                    <td style={{ padding: '9px 10px', maxWidth: 220 }}>
+                      {cats
+                        ? <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                            {cats.map(c => <span key={c} style={{ background: '#1a2a1a', color: '#2ecc71', border: '1px solid #0f5035', borderRadius: 6, padding: '2px 7px', fontSize: 11, fontWeight: 600, whiteSpace: 'nowrap' }}>{c}</span>)}
+                          </div>
+                        : <span style={{ color: 'var(--muted)', fontSize: 12 }}>All categories</span>
+                      }
                     </td>
                     <td style={{ padding: '9px 10px' }}>{r.businesses_found ?? '—'}</td>
                     <td style={{ padding: '9px 10px' }}>{r.emails_sent ?? '—'}</td>
@@ -948,6 +990,21 @@ export default function App() {
     setTab('businesses')
   }
 
+  const handleResetDb = async () => {
+    try {
+      const res = await fetch(`${LOCAL_API}/reset-db`, { method: 'POST' })
+      const data = await res.json()
+      if (data.success) {
+        await loadData()
+        showToast('Database wiped. Fresh start.', 'success')
+      } else {
+        showToast(data.error || 'Reset failed', 'error')
+      }
+    } catch {
+      showToast('Server offline — start server.py first', 'error')
+    }
+  }
+
   const handleRunScraper = async (opts) => {
     try {
       const res = await fetch(`${LOCAL_API}/scrape`, {
@@ -1013,7 +1070,7 @@ export default function App() {
             {tab === 'emails'     && <EmailsView emailLogs={emailLogs} businesses={businesses} />}
             {tab === 'followups'  && <FollowUpsView followUps={followUps} businesses={businesses} onMarkSent={handleMarkSent} onSendFollowUp={handleSendFollowUp} />}
             {tab === 'feedback'   && <FeedbackView feedback={feedback} businesses={businesses} />}
-            {tab === 'admin'      && <AdminView scrapeRuns={scrapeRuns} onRunScraper={handleRunScraper} apiStatus={apiStatus} onCheckApi={checkApi} onViewRun={handleViewRun} />}
+            {tab === 'admin'      && <AdminView scrapeRuns={scrapeRuns} onRunScraper={handleRunScraper} apiStatus={apiStatus} onCheckApi={checkApi} onViewRun={handleViewRun} onResetDb={handleResetDb} />}
           </>
         )}
       </main>
