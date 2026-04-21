@@ -482,14 +482,29 @@ function BusinessModal({ biz, emailLogs, followUps, feedback, onClose, onStatusC
   const [fbSentiment, setFbSentiment] = useState('neutral')
   const [fuDays, setFuDays]         = useState('5')
   const [sending, setSending]       = useState(false)
+  const [localEmail, setLocalEmail] = useState(biz.email || '')
+  const [editingEmail, setEditingEmail] = useState(false)
+  const [emailDraft, setEmailDraft] = useState(biz.email || '')
+  const [savingEmail, setSavingEmail] = useState(false)
+
+  const handleSaveEmail = async () => {
+    setSavingEmail(true)
+    const trimmed = emailDraft.trim()
+    await supabase.from('businesses').update({ email: trimmed }).eq('id', biz.id)
+    setLocalEmail(trimmed)
+    setEditingEmail(false)
+    setSavingEmail(false)
+    showToast('Email saved')
+    onRefresh()
+  }
 
   const handleViewProposal = () => {
     window.open(`${LOCAL_API}/preview-proposal?business_id=${biz.id}`, '_blank')
   }
 
   const handleSendProposal = async () => {
-    if (!biz.email) { showToast('No email address on file', 'error'); return }
-    if (!window.confirm(`Send proposal to ${biz.email}?`)) return
+    if (!localEmail) { showToast('No email address on file', 'error'); return }
+    if (!window.confirm(`Send proposal to ${localEmail}?`)) return
     setSending(true)
     try {
       const res = await fetch(`${LOCAL_API}/send-proposal`, {
@@ -501,7 +516,7 @@ function BusinessModal({ biz, emailLogs, followUps, feedback, onClose, onStatusC
       if (data.error) {
         showToast(data.error, 'error')
       } else {
-        showToast(`Proposal sent to ${biz.email}!`, 'success')
+        showToast(`Proposal sent to ${localEmail}!`, 'success')
         onRefresh()
       }
     } catch {
@@ -543,7 +558,31 @@ function BusinessModal({ biz, emailLogs, followUps, feedback, onClose, onStatusC
         <Card style={{ marginBottom: 16 }}>
           <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>Contact Info</div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, fontSize: 13 }}>
-            <div><div style={{ color: 'var(--muted)', fontSize: 11, marginBottom: 2 }}>Email</div><div>{biz.email || '—'}</div></div>
+            <div style={{ gridColumn: '1/-1' }}>
+              <div style={{ color: 'var(--muted)', fontSize: 11, marginBottom: 4 }}>Email</div>
+              {editingEmail ? (
+                <div style={{ display: 'flex', gap: 7, alignItems: 'center' }}>
+                  <input
+                    value={emailDraft}
+                    onChange={e => setEmailDraft(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && handleSaveEmail()}
+                    placeholder="email@business.com"
+                    autoFocus
+                    style={{ flex: 1, background: 'var(--surface2)', border: '1px solid var(--accent)', borderRadius: 7, padding: '6px 10px', color: 'var(--text)', fontSize: 13, outline: 'none' }}
+                  />
+                  <Btn size="sm" onClick={handleSaveEmail} disabled={savingEmail}>{savingEmail ? '...' : 'Save'}</Btn>
+                  <Btn size="sm" variant="ghost" onClick={() => { setEditingEmail(false); setEmailDraft(localEmail) }}>Cancel</Btn>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <span style={{ color: localEmail ? 'var(--text)' : 'var(--muted)' }}>{localEmail || '—'}</span>
+                  <button onClick={() => { setEmailDraft(localEmail); setEditingEmail(true) }}
+                    style={{ background: 'none', border: '1px solid var(--border)', borderRadius: 5, color: 'var(--muted)', fontSize: 11, padding: '2px 8px', cursor: 'pointer', fontWeight: 600 }}>
+                    ✏ Edit
+                  </button>
+                </div>
+              )}
+            </div>
             <div><div style={{ color: 'var(--muted)', fontSize: 11, marginBottom: 2 }}>Phone</div><div>{biz.phone || '—'}</div></div>
             <div style={{ gridColumn: '1/-1' }}><div style={{ color: 'var(--muted)', fontSize: 11, marginBottom: 2 }}>Website</div>
               {biz.website ? <a href={biz.website} target="_blank" rel="noreferrer" style={{ color: 'var(--accent)', fontSize: 13 }}>{biz.website}</a> : '—'}</div>
@@ -557,12 +596,12 @@ function BusinessModal({ biz, emailLogs, followUps, feedback, onClose, onStatusC
             <Btn variant="ghost" onClick={handleViewProposal} disabled={apiStatus !== 'online'} style={{ flex: 1, justifyContent: 'center' }}>
               👁 View Proposal
             </Btn>
-            <Btn variant="success" onClick={handleSendProposal} disabled={sending || apiStatus !== 'online' || !biz.email} style={{ flex: 1, justifyContent: 'center' }}>
+            <Btn variant="success" onClick={handleSendProposal} disabled={sending || apiStatus !== 'online' || !localEmail} style={{ flex: 1, justifyContent: 'center' }}>
               {sending ? '⏳ Sending...' : '📤 Send Proposal'}
             </Btn>
           </div>
-          {!biz.email && (
-            <div style={{ fontSize: 12, color: '#e74c3c', marginTop: 8 }}>⚠ No email on file — scrape or add manually to send.</div>
+          {!localEmail && (
+            <div style={{ fontSize: 12, color: '#e74c3c', marginTop: 8 }}>⚠ No email on file — click ✏ Edit above to add one.</div>
           )}
           {apiStatus !== 'online' && (
             <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 8 }}>Start the local server to use these.</div>
