@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { supabase, LOCAL_API } from './supabase'
 
 // ── Helpers ──────────────────────────────────────────────────
@@ -94,6 +94,88 @@ function daysUntil(date) {
   if (!date) return null
   const diff = Math.floor((new Date(date) - new Date()) / 86400000)
   return diff
+}
+
+// ── Login Screen ─────────────────────────────────────────────
+function LoginScreen() {
+  const [email,    setEmail]    = useState('')
+  const [password, setPassword] = useState('')
+  const [error,    setError]    = useState('')
+  const [loading,  setLoading]  = useState(false)
+  const [mode,     setMode]     = useState('signin') // 'signin' | 'reset'
+  const [resetSent, setResetSent] = useState(false)
+
+  const handleSignIn = async () => {
+    setLoading(true); setError('')
+    const { error } = await supabase.auth.signInWithPassword({ email, password })
+    if (error) setError(error.message)
+    setLoading(false)
+  }
+
+  const handleReset = async () => {
+    setLoading(true); setError('')
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: window.location.origin,
+    })
+    if (error) setError(error.message)
+    else setResetSent(true)
+    setLoading(false)
+  }
+
+  const handleKey = (e) => { if (e.key === 'Enter') mode === 'signin' ? handleSignIn() : handleReset() }
+
+  return (
+    <div style={{ minHeight: '100vh', background: 'var(--bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+      <div style={{ width: '100%', maxWidth: 400 }}>
+        {/* Logo */}
+        <div style={{ textAlign: 'center', marginBottom: 36 }}>
+          <div style={{ fontSize: 36, marginBottom: 10 }}>🔨</div>
+          <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--text)', letterSpacing: -0.5 }}>Rebuild Digital Co</div>
+          <div style={{ fontSize: 13, color: 'var(--muted)', marginTop: 4 }}>Outreach Tracker</div>
+        </div>
+
+        <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 14, padding: 32 }}>
+          <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 22, color: 'var(--text)' }}>
+            {mode === 'signin' ? 'Sign In' : 'Reset Password'}
+          </div>
+
+          {resetSent ? (
+            <div style={{ textAlign: 'center', padding: '16px 0' }}>
+              <div style={{ fontSize: 28, marginBottom: 10 }}>📧</div>
+              <div style={{ fontSize: 14, color: '#2ecc71' }}>Check your email for a reset link.</div>
+              <button onClick={() => { setMode('signin'); setResetSent(false) }}
+                style={{ marginTop: 16, background: 'none', border: 'none', color: 'var(--accent)', fontSize: 13, cursor: 'pointer', fontWeight: 600 }}>
+                Back to sign in
+              </button>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <Input label="Email" value={email} onChange={setEmail} placeholder="you@example.com" type="email" />
+              {mode === 'signin' && (
+                <Input label="Password" value={password} onChange={setPassword} placeholder="••••••••" type="password" />
+              )}
+              {error && (
+                <div style={{ background: '#1a0505', border: '1px solid #5a1010', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: '#e74c3c' }}>
+                  {error}
+                </div>
+              )}
+              <Btn onClick={mode === 'signin' ? handleSignIn : handleReset} disabled={loading || !email || (mode === 'signin' && !password)} style={{ width: '100%', justifyContent: 'center', padding: '11px' }}>
+                {loading ? '⏳ Please wait...' : mode === 'signin' ? 'Sign In' : 'Send Reset Link'}
+              </Btn>
+              <button onClick={() => { setMode(mode === 'signin' ? 'reset' : 'signin'); setError('') }}
+                style={{ background: 'none', border: 'none', color: 'var(--muted)', fontSize: 12, cursor: 'pointer', textAlign: 'center', marginTop: 4 }}>
+                {mode === 'signin' ? 'Forgot password?' : '← Back to sign in'}
+              </button>
+            </div>
+          )}
+        </div>
+
+        <div style={{ textAlign: 'center', marginTop: 20, fontSize: 12, color: 'var(--muted)' }}>
+          Access is by invitation only. Contact your admin to get an account.
+        </div>
+      </div>
+    </div>
+  )
 }
 
 // ── Dashboard ────────────────────────────────────────────────
@@ -653,7 +735,7 @@ const ALL_CATEGORIES = [
   'Plumber', 'Electrician', 'Dentist', 'Gym / Fitness', 'Auto Repair', 'Landscaping'
 ]
 
-function AdminView({ scrapeRuns, onRunScraper, apiStatus, onCheckApi, onViewRun, onResetDb }) {
+function AdminView({ scrapeRuns, onRunScraper, apiStatus, onCheckApi, onViewRun, onResetDb, userRole }) {
   const [location,    setLocation]    = useState('Dallas, TX')
   const [limit,       setLimit]       = useState('10')
   const [sendEmails,  setSendEmails]  = useState(false)
@@ -783,8 +865,8 @@ function AdminView({ scrapeRuns, onRunScraper, apiStatus, onCheckApi, onViewRun,
         </Card>
       </div>
 
-      {/* Nuclear reset */}
-      <Card style={{ marginBottom: 16, borderColor: resetStep === 1 ? '#e74c3c' : 'var(--border)', background: resetStep === 1 ? '#1a0505' : 'var(--surface)' }}>
+      {/* Nuclear reset — admin only */}
+      {userRole === 'admin' && <Card style={{ marginBottom: 16, borderColor: resetStep === 1 ? '#e74c3c' : 'var(--border)', background: resetStep === 1 ? '#1a0505' : 'var(--surface)' }}>
         <div style={{ fontSize: 13, fontWeight: 700, color: '#e74c3c', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>☢ Danger Zone</div>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
           <div style={{ fontSize: 13, color: 'var(--muted)', lineHeight: 1.6 }}>
@@ -802,7 +884,7 @@ function AdminView({ scrapeRuns, onRunScraper, apiStatus, onCheckApi, onViewRun,
             </Btn>
           </div>
         </div>
-      </Card>
+      </Card>}
 
       {/* Scrape run history */}
       <Card>
@@ -874,9 +956,40 @@ export default function App() {
   const [toast, setToast]           = useState(null)
   const [runFilter, setRunFilter]   = useState(null)
 
+  // Auth state
+  const [session, setSession]       = useState(null)
+  const [userRole, setUserRole]     = useState('user')
+  const [authLoading, setAuthLoading] = useState(true)
+
   const showToast = (msg, type = 'success') => {
     setToast({ msg, type })
     setTimeout(() => setToast(null), 3000)
+  }
+
+  // ── Auth ───────────────────────────────────────────────────
+  const fetchProfile = useCallback(async (userId) => {
+    const { data } = await supabase.from('profiles').select('role').eq('id', userId).single()
+    setUserRole(data?.role || 'user')
+  }, [])
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session)
+      if (session) fetchProfile(session.user.id)
+      setAuthLoading(false)
+    })
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session)
+      if (session) fetchProfile(session.user.id)
+      else { setUserRole('user'); setAuthLoading(false) }
+    })
+    return () => subscription.unsubscribe()
+  }, [fetchProfile])
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut()
+    setSession(null)
+    setUserRole('user')
   }
 
   // Load all data from Supabase
@@ -1031,6 +1144,16 @@ export default function App() {
 
   const dueCount = followUps.filter(f => f.status === 'pending' && daysUntil(f.scheduled_for) <= 0).length
 
+  // ── Auth gate ──────────────────────────────────────────────
+  if (authLoading) {
+    return (
+      <div style={{ minHeight: '100vh', background: 'var(--bg)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div style={{ color: 'var(--muted)', fontSize: 14 }}>Loading...</div>
+      </div>
+    )
+  }
+  if (!session) return <LoginScreen />
+
   return (
     <div style={{ display: 'flex', minHeight: '100vh' }}>
       {/* Sidebar */}
@@ -1054,8 +1177,26 @@ export default function App() {
             </button>
           ))}
         </nav>
-        <div style={{ padding: '12px 20px', borderTop: '1px solid var(--border)', fontSize: 11, color: 'var(--muted)' }}>
-          {businesses.length} businesses · {emailLogs.length} emails
+        {/* User info + logout */}
+        <div style={{ padding: '12px 14px', borderTop: '1px solid var(--border)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+            <div style={{ width: 28, height: 28, borderRadius: '50%', background: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 800, flexShrink: 0 }}>
+              {session.user.email?.[0]?.toUpperCase() || '?'}
+            </div>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{session.user.email}</div>
+              <div style={{ fontSize: 10, color: userRole === 'admin' ? '#c9a96e' : 'var(--muted)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                {userRole === 'admin' ? '⭐ Admin' : 'User'}
+              </div>
+            </div>
+          </div>
+          <button onClick={handleLogout}
+            style={{ width: '100%', background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 7, color: 'var(--muted)', fontSize: 12, padding: '6px', cursor: 'pointer', fontWeight: 600 }}>
+            Sign Out
+          </button>
+          <div style={{ fontSize: 10, color: '#636380', marginTop: 8, textAlign: 'center' }}>
+            {businesses.length} businesses · {emailLogs.length} emails
+          </div>
         </div>
       </aside>
 
@@ -1070,7 +1211,7 @@ export default function App() {
             {tab === 'emails'     && <EmailsView emailLogs={emailLogs} businesses={businesses} />}
             {tab === 'followups'  && <FollowUpsView followUps={followUps} businesses={businesses} onMarkSent={handleMarkSent} onSendFollowUp={handleSendFollowUp} />}
             {tab === 'feedback'   && <FeedbackView feedback={feedback} businesses={businesses} />}
-            {tab === 'admin'      && <AdminView scrapeRuns={scrapeRuns} onRunScraper={handleRunScraper} apiStatus={apiStatus} onCheckApi={checkApi} onViewRun={handleViewRun} onResetDb={handleResetDb} />}
+            {tab === 'admin'      && <AdminView scrapeRuns={scrapeRuns} onRunScraper={handleRunScraper} apiStatus={apiStatus} onCheckApi={checkApi} onViewRun={handleViewRun} onResetDb={handleResetDb} userRole={userRole} />}
           </>
         )}
       </main>
