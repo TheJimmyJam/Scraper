@@ -432,13 +432,9 @@ if os.path.isdir(_DIST):
 
 
 if __name__ == "__main__":
-    ssl_keyfile  = "localhost-key.pem" if os.path.exists("localhost-key.pem") else None
-    ssl_certfile = "localhost.pem"     if os.path.exists("localhost.pem")     else None
-    protocol = "https" if ssl_certfile else "http"
-
-    print("🔨 Rebuild Digital Co — Local API Server")
+    port = int(os.getenv("PORT", 8000))
+    print("🔨 Rebuild Digital Co — API Server")
     print(f"   Supabase: {'✓ connected' if db else '✗ not configured'}")
-    print(f"   Running at {protocol}://localhost:8000")
+    print(f"   Running at http://0.0.0.0:{port}")
     print()
-    uvicorn.run("server:app", host="0.0.0.0", port=8000, reload=False,
-                ssl_keyfile=ssl_keyfile, ssl_certfile=ssl_certfile)
+    uvicorn.run("server:app", host="0.0.0.0", port=port, reload=False)
