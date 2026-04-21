@@ -591,18 +591,39 @@ function FeedbackView({ feedback, businesses }) {
 }
 
 // ── Admin Panel ──────────────────────────────────────────────
+const ALL_CATEGORIES = [
+  'Hair Salon', 'Restaurant', 'Contractor', 'Medical Office',
+  'Plumber', 'Electrician', 'Dentist', 'Gym / Fitness', 'Auto Repair', 'Landscaping'
+]
+
 function AdminView({ scrapeRuns, onRunScraper, apiStatus, onCheckApi }) {
   const [location,    setLocation]    = useState('Dallas, TX')
   const [limit,       setLimit]       = useState('10')
   const [sendEmails,  setSendEmails]  = useState(false)
   const [running,     setRunning]     = useState(false)
   const [log,         setLog]         = useState([])
+  const [selectedCats, setSelectedCats] = useState(new Set(ALL_CATEGORIES))
+
+  const toggleCat = (cat) => setSelectedCats(prev => {
+    const next = new Set(prev)
+    next.has(cat) ? next.delete(cat) : next.add(cat)
+    return next
+  })
+  const toggleAll = () => setSelectedCats(
+    selectedCats.size === ALL_CATEGORIES.length ? new Set() : new Set(ALL_CATEGORIES)
+  )
 
   const handleRun = async () => {
+    if (selectedCats.size === 0) return
     setRunning(true)
     setLog(['Starting scraper...'])
     try {
-      const res = await onRunScraper({ location, limit: parseInt(limit), send_emails: sendEmails })
+      const res = await onRunScraper({
+        location,
+        limit: parseInt(limit),
+        send_emails: sendEmails,
+        categories: [...selectedCats],
+      })
       setLog(prev => [...prev, ...res.log || ['Done.']])
     } catch (e) {
       setLog(prev => [...prev, `Error: ${e.message}`])
@@ -653,12 +674,33 @@ function AdminView({ scrapeRuns, onRunScraper, apiStatus, onCheckApi }) {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
             <Input label="Location" value={location} onChange={setLocation} placeholder="Dallas, TX" />
             <Input label="Results Per Category" value={limit} onChange={setLimit} type="number" />
-            <label style={{ display: 'flex', align: 'center', gap: 10, cursor: 'pointer', fontSize: 14 }}>
+
+            {/* Category selector */}
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                <label style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1 }}>
+                  Categories ({selectedCats.size}/{ALL_CATEGORIES.length})
+                </label>
+                <button onClick={toggleAll} style={{ background: 'none', border: 'none', color: 'var(--accent)', fontSize: 12, cursor: 'pointer', fontWeight: 600 }}>
+                  {selectedCats.size === ALL_CATEGORIES.length ? 'Deselect All' : 'Select All'}
+                </button>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+                {ALL_CATEGORIES.map(cat => (
+                  <label key={cat} style={{ display: 'flex', alignItems: 'center', gap: 7, cursor: 'pointer', fontSize: 13, padding: '5px 8px', borderRadius: 6, background: selectedCats.has(cat) ? '#1a2a1a' : 'var(--surface2)', border: `1px solid ${selectedCats.has(cat) ? '#0f5035' : 'var(--border)'}`, transition: 'all 0.1s' }}>
+                    <input type="checkbox" checked={selectedCats.has(cat)} onChange={() => toggleCat(cat)} style={{ accentColor: 'var(--accent)' }} />
+                    <span style={{ color: selectedCats.has(cat) ? '#2ecc71' : 'var(--muted)' }}>{cat}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontSize: 14 }}>
               <input type="checkbox" checked={sendEmails} onChange={e => setSendEmails(e.target.checked)} />
               Auto-send proposals after scrape
             </label>
-            <Btn onClick={handleRun} disabled={running || apiStatus !== 'online'} style={{ width: '100%', justifyContent: 'center', padding: '12px' }}>
-              {running ? '⏳ Running...' : '🚀 Run Scraper'}
+            <Btn onClick={handleRun} disabled={running || apiStatus !== 'online' || selectedCats.size === 0} style={{ width: '100%', justifyContent: 'center', padding: '12px' }}>
+              {running ? '⏳ Running...' : `🚀 Run Scraper (${selectedCats.size} ${selectedCats.size === 1 ? 'category' : 'categories'})`}
             </Btn>
           </div>
         </Card>
