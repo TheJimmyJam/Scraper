@@ -880,7 +880,7 @@ function AdminView({ scrapeRuns, onRunScraper, apiStatus, onCheckApi, onViewRun,
   const [sendEmails,  setSendEmails]  = useState(false)
   const [running,     setRunning]     = useState(false)
   const [log,         setLog]         = useState([])
-  const [selectedCats, setSelectedCats] = useState(new Set(ALL_CATEGORIES))
+  const [selectedCats, setSelectedCats] = useState(new Set())
   const [customCats,   setCustomCats]   = useState([])
   const [customInput,  setCustomInput]  = useState('')
   const [resetStep,   setResetStep]   = useState(0)  // 0=idle, 1=first confirm, 2=resetting
