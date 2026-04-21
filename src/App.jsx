@@ -591,7 +591,7 @@ function FeedbackView({ feedback, businesses }) {
 }
 
 // ── Admin Panel ──────────────────────────────────────────────
-function AdminView({ scrapeRuns, onRunScraper, apiStatus }) {
+function AdminView({ scrapeRuns, onRunScraper, apiStatus, onCheckApi }) {
   const [location,    setLocation]    = useState('Dallas, TX')
   const [limit,       setLimit]       = useState('10')
   const [sendEmails,  setSendEmails]  = useState(false)
@@ -638,7 +638,7 @@ function AdminView({ scrapeRuns, onRunScraper, apiStatus }) {
           </div>
           {apiStatus !== 'online' && (
             <button
-              onClick={checkApi}
+              onClick={onCheckApi}
               style={{ background: '#1e1e30', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--muted)', fontSize: 12, padding: '6px 12px', cursor: 'pointer', whiteSpace: 'nowrap', marginTop: 2 }}
             >
               ↻ Retry
@@ -901,7 +901,7 @@ export default function App() {
             {tab === 'emails'     && <EmailsView emailLogs={emailLogs} businesses={businesses} />}
             {tab === 'followups'  && <FollowUpsView followUps={followUps} businesses={businesses} onMarkSent={handleMarkSent} onSendFollowUp={handleSendFollowUp} />}
             {tab === 'feedback'   && <FeedbackView feedback={feedback} businesses={businesses} />}
-            {tab === 'admin'      && <AdminView scrapeRuns={scrapeRuns} onRunScraper={handleRunScraper} apiStatus={apiStatus} />}
+            {tab === 'admin'      && <AdminView scrapeRuns={scrapeRuns} onRunScraper={handleRunScraper} apiStatus={apiStatus} onCheckApi={checkApi} />}
           </>
         )}
       </main>
