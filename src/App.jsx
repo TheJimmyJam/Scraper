@@ -182,7 +182,7 @@ function Dashboard({ businesses, emailLogs, followUps, feedback, scrapeRuns }) {
 }
 
 // ── Businesses Table ─────────────────────────────────────────
-function BusinessesView({ businesses, onStatusChange, onSelect }) {
+function BusinessesView({ businesses, onStatusChange, onSelect, runFilter, onClearRunFilter }) {
   const [search, setSearch]     = useState('')
   const [filterStatus, setFilterStatus] = useState('all')
   const [filterCat, setFilterCat]       = useState('all')
@@ -193,6 +193,7 @@ function BusinessesView({ businesses, onStatusChange, onSelect }) {
 
   const filtered = businesses
     .filter(b => {
+      if (runFilter && b.scrape_run_id !== runFilter.id) return false
       if (filterStatus !== 'all' && b.status !== filterStatus) return false
       if (filterCat !== 'all' && b.category !== filterCat) return false
       if (search) {
@@ -221,6 +222,15 @@ function BusinessesView({ businesses, onStatusChange, onSelect }) {
 
   return (
     <div>
+      {/* Run filter banner */}
+      {runFilter && (
+        <div style={{ background: '#1a2a1a', border: '1px solid #0f5035', borderRadius: 10, padding: '10px 16px', marginBottom: 14, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span style={{ fontSize: 13, color: '#2ecc71' }}>
+            🔍 Showing <strong>{filtered.length} businesses</strong> from scrape on {new Date(runFilter.started_at).toLocaleString()} · {runFilter.categories || 'all categories'}
+          </span>
+          <button onClick={onClearRunFilter} style={{ background: 'none', border: '1px solid #0f5035', borderRadius: 6, color: '#2ecc71', fontSize: 12, padding: '4px 10px', cursor: 'pointer', fontWeight: 600 }}>✕ Clear Filter</button>
+        </div>
+      )}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18, flexWrap: 'wrap', gap: 10 }}>
         <h2 style={{ fontSize: 22, fontWeight: 800 }}>Businesses <span style={{ fontSize: 15, color: 'var(--muted)', fontWeight: 400 }}>({filtered.length})</span></h2>
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
@@ -643,7 +653,7 @@ const ALL_CATEGORIES = [
   'Plumber', 'Electrician', 'Dentist', 'Gym / Fitness', 'Auto Repair', 'Landscaping'
 ]
 
-function AdminView({ scrapeRuns, onRunScraper, apiStatus, onCheckApi }) {
+function AdminView({ scrapeRuns, onRunScraper, apiStatus, onCheckApi, onViewRun }) {
   const [location,    setLocation]    = useState('Dallas, TX')
   const [limit,       setLimit]       = useState('10')
   const [sendEmails,  setSendEmails]  = useState(false)
@@ -772,7 +782,7 @@ function AdminView({ scrapeRuns, onRunScraper, apiStatus, onCheckApi }) {
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
             <thead>
               <tr>
-                {['Started', 'Location', 'Status', 'Found', 'Emails Sent', 'Duration'].map(h => (
+                {['Started', 'Location', 'Status', 'Found', 'Emails Sent', 'Duration', ''].map(h => (
                   <th key={h} style={{ padding: '8px 10px', textAlign: 'left', fontSize: 11, color: 'var(--muted)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1 }}>{h}</th>
                 ))}
               </tr>
@@ -780,16 +790,23 @@ function AdminView({ scrapeRuns, onRunScraper, apiStatus, onCheckApi }) {
             <tbody>
               {scrapeRuns.map(r => {
                 const duration = r.completed_at ? Math.round((new Date(r.completed_at) - new Date(r.started_at)) / 1000) : null
+                const clickable = r.status === 'completed' && r.businesses_found > 0
                 return (
-                  <tr key={r.id} style={{ borderTop: '1px solid var(--border)' }}>
+                  <tr key={r.id}
+                    onClick={() => clickable && onViewRun(r)}
+                    style={{ borderTop: '1px solid var(--border)', cursor: clickable ? 'pointer' : 'default', transition: 'background 0.15s' }}
+                    onMouseEnter={e => { if (clickable) e.currentTarget.style.background = 'var(--surface2)' }}
+                    onMouseLeave={e => { e.currentTarget.style.background = '' }}
+                  >
                     <td style={{ padding: '9px 10px' }}>{new Date(r.started_at).toLocaleString()}</td>
                     <td style={{ padding: '9px 10px' }}>{r.location}</td>
                     <td style={{ padding: '9px 10px' }}>
                       <span style={{ color: r.status === 'completed' ? '#2ecc71' : r.status === 'failed' ? '#e74c3c' : '#f39c12', fontWeight: 700, fontSize: 12 }}>{r.status.toUpperCase()}</span>
                     </td>
-                    <td style={{ padding: '9px 10px' }}>{r.businesses_found}</td>
-                    <td style={{ padding: '9px 10px' }}>{r.emails_sent}</td>
+                    <td style={{ padding: '9px 10px' }}>{r.businesses_found ?? '—'}</td>
+                    <td style={{ padding: '9px 10px' }}>{r.emails_sent ?? '—'}</td>
                     <td style={{ padding: '9px 10px', color: 'var(--muted)' }}>{duration ? `${duration}s` : '—'}</td>
+                    <td style={{ padding: '9px 10px', color: 'var(--accent)', fontSize: 12 }}>{clickable ? '→ View' : ''}</td>
                   </tr>
                 )
               })}
@@ -813,6 +830,7 @@ export default function App() {
   const [selectedBiz, setSelectedBiz] = useState(null)
   const [apiStatus, setApiStatus]   = useState('unknown')
   const [toast, setToast]           = useState(null)
+  const [runFilter, setRunFilter]   = useState(null)
 
   const showToast = (msg, type = 'success') => {
     setToast({ msg, type })
@@ -925,6 +943,11 @@ export default function App() {
     }
   }
 
+  const handleViewRun = (run) => {
+    setRunFilter(run)
+    setTab('businesses')
+  }
+
   const handleRunScraper = async (opts) => {
     try {
       const res = await fetch(`${LOCAL_API}/scrape`, {
@@ -986,11 +1009,11 @@ export default function App() {
           : (
           <>
             {tab === 'dashboard'  && <Dashboard businesses={businesses} emailLogs={emailLogs} followUps={followUps} feedback={feedback} scrapeRuns={scrapeRuns} />}
-            {tab === 'businesses' && <BusinessesView businesses={businesses} onStatusChange={handleStatusChange} onSelect={setSelectedBiz} />}
+            {tab === 'businesses' && <BusinessesView businesses={businesses} onStatusChange={handleStatusChange} onSelect={setSelectedBiz} runFilter={runFilter} onClearRunFilter={() => setRunFilter(null)} />}
             {tab === 'emails'     && <EmailsView emailLogs={emailLogs} businesses={businesses} />}
             {tab === 'followups'  && <FollowUpsView followUps={followUps} businesses={businesses} onMarkSent={handleMarkSent} onSendFollowUp={handleSendFollowUp} />}
             {tab === 'feedback'   && <FeedbackView feedback={feedback} businesses={businesses} />}
-            {tab === 'admin'      && <AdminView scrapeRuns={scrapeRuns} onRunScraper={handleRunScraper} apiStatus={apiStatus} onCheckApi={checkApi} />}
+            {tab === 'admin'      && <AdminView scrapeRuns={scrapeRuns} onRunScraper={handleRunScraper} apiStatus={apiStatus} onCheckApi={checkApi} onViewRun={handleViewRun} />}
           </>
         )}
       </main>
