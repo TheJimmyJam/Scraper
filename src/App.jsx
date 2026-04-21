@@ -96,6 +96,106 @@ function daysUntil(date) {
   return diff
 }
 
+// ── Set Password Screen ───────────────────────────────────────
+function SetPasswordScreen({ onDone }) {
+  const [password, setPassword] = useState('')
+  const [confirm,  setConfirm]  = useState('')
+  const [error,    setError]    = useState('')
+  const [loading,  setLoading]  = useState(false)
+  const [done,     setDone]     = useState(false)
+
+  const handleSet = async () => {
+    if (password.length < 6) { setError('Password must be at least 6 characters'); return }
+    if (password !== confirm)  { setError('Passwords do not match'); return }
+    setLoading(true); setError('')
+    const { error } = await supabase.auth.updateUser({ password })
+    if (error) { setError(error.message); setLoading(false); return }
+    setDone(true)
+    setTimeout(onDone, 1800)
+  }
+
+  return (
+    <div style={{ minHeight: '100vh', background: 'var(--bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+      <div style={{ width: '100%', maxWidth: 400 }}>
+        <div style={{ textAlign: 'center', marginBottom: 36 }}>
+          <div style={{ fontSize: 36, marginBottom: 10 }}>🔐</div>
+          <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--text)' }}>Set Your Password</div>
+          <div style={{ fontSize: 13, color: 'var(--muted)', marginTop: 4 }}>Choose a password for your account</div>
+        </div>
+        <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 14, padding: 32 }}>
+          {done ? (
+            <div style={{ textAlign: 'center', padding: '16px 0' }}>
+              <div style={{ fontSize: 32, marginBottom: 10 }}>✅</div>
+              <div style={{ fontSize: 15, color: '#2ecc71', fontWeight: 600 }}>Password set! Taking you in...</div>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <Input label="New Password" value={password} onChange={setPassword} placeholder="At least 6 characters" type="password" />
+              <Input label="Confirm Password" value={confirm} onChange={setConfirm} placeholder="Repeat password" type="password" />
+              {error && (
+                <div style={{ background: '#1a0505', border: '1px solid #5a1010', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: '#e74c3c' }}>{error}</div>
+              )}
+              <Btn onClick={handleSet} disabled={loading || !password || !confirm} style={{ width: '100%', justifyContent: 'center', padding: '11px' }}>
+                {loading ? '⏳ Setting password...' : 'Set Password & Sign In'}
+              </Btn>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Change Password Modal ─────────────────────────────────────
+function ChangePasswordModal({ onClose }) {
+  const [current,  setCurrent]  = useState('')
+  const [password, setPassword] = useState('')
+  const [confirm,  setConfirm]  = useState('')
+  const [error,    setError]    = useState('')
+  const [loading,  setLoading]  = useState(false)
+  const [done,     setDone]     = useState(false)
+
+  const handleChange = async () => {
+    if (password.length < 6) { setError('Password must be at least 6 characters'); return }
+    if (password !== confirm)  { setError('Passwords do not match'); return }
+    setLoading(true); setError('')
+    const { error } = await supabase.auth.updateUser({ password })
+    if (error) { setError(error.message); setLoading(false); return }
+    setDone(true)
+    setTimeout(onClose, 1800)
+  }
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+         onClick={onClose}>
+      <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 14, padding: 32, width: '100%', maxWidth: 380 }}
+           onClick={e => e.stopPropagation()}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+          <div style={{ fontSize: 16, fontWeight: 700 }}>Change Password</div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--muted)', fontSize: 20, cursor: 'pointer' }}>✕</button>
+        </div>
+        {done ? (
+          <div style={{ textAlign: 'center', padding: '16px 0' }}>
+            <div style={{ fontSize: 28, marginBottom: 8 }}>✅</div>
+            <div style={{ color: '#2ecc71', fontWeight: 600 }}>Password updated!</div>
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <Input label="New Password" value={password} onChange={setPassword} placeholder="At least 6 characters" type="password" />
+            <Input label="Confirm Password" value={confirm} onChange={setConfirm} placeholder="Repeat password" type="password" />
+            {error && (
+              <div style={{ background: '#1a0505', border: '1px solid #5a1010', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: '#e74c3c' }}>{error}</div>
+            )}
+            <Btn onClick={handleChange} disabled={loading || !password || !confirm} style={{ width: '100%', justifyContent: 'center', padding: '11px' }}>
+              {loading ? '⏳ Updating...' : 'Update Password'}
+            </Btn>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ── Login Screen ─────────────────────────────────────────────
 function LoginScreen() {
   const [email,    setEmail]    = useState('')
@@ -998,9 +1098,11 @@ export default function App() {
   const [runFilter, setRunFilter]   = useState(null)
 
   // Auth state
-  const [session, setSession]       = useState(null)
-  const [userRole, setUserRole]     = useState('user')
-  const [authLoading, setAuthLoading] = useState(true)
+  const [session, setSession]           = useState(null)
+  const [userRole, setUserRole]         = useState('user')
+  const [authLoading, setAuthLoading]   = useState(true)
+  const [needsPasswordSet, setNeedsPasswordSet] = useState(false)
+  const [showChangePassword, setShowChangePassword] = useState(false)
 
   const showToast = (msg, type = 'success') => {
     setToast({ msg, type })
@@ -1019,10 +1121,17 @@ export default function App() {
       if (session) fetchProfile(session.user.id)
       setAuthLoading(false)
     })
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session)
-      if (session) fetchProfile(session.user.id)
-      else { setUserRole('user'); setAuthLoading(false) }
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'PASSWORD_RECOVERY') {
+        setSession(session)
+        setNeedsPasswordSet(true)
+        setAuthLoading(false)
+      } else {
+        setNeedsPasswordSet(false)
+        setSession(session)
+        if (session) fetchProfile(session.user.id)
+        else { setUserRole('user'); setAuthLoading(false) }
+      }
     })
     return () => subscription.unsubscribe()
   }, [fetchProfile])
@@ -1193,6 +1302,7 @@ export default function App() {
       </div>
     )
   }
+  if (needsPasswordSet) return <SetPasswordScreen onDone={() => setNeedsPasswordSet(false)} />
   if (!session) return <LoginScreen />
 
   return (
@@ -1231,10 +1341,16 @@ export default function App() {
               </div>
             </div>
           </div>
-          <button onClick={handleLogout}
-            style={{ width: '100%', background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 7, color: 'var(--muted)', fontSize: 12, padding: '6px', cursor: 'pointer', fontWeight: 600 }}>
-            Sign Out
-          </button>
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button onClick={() => setShowChangePassword(true)}
+              style={{ flex: 1, background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 7, color: 'var(--muted)', fontSize: 11, padding: '6px', cursor: 'pointer', fontWeight: 600 }}>
+              🔑 Password
+            </button>
+            <button onClick={handleLogout}
+              style={{ flex: 1, background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 7, color: 'var(--muted)', fontSize: 11, padding: '6px', cursor: 'pointer', fontWeight: 600 }}>
+              Sign Out
+            </button>
+          </div>
           <div style={{ fontSize: 10, color: '#636380', marginTop: 8, textAlign: 'center' }}>
             {businesses.length} businesses · {emailLogs.length} emails
           </div>
@@ -1274,6 +1390,9 @@ export default function App() {
           showToast={showToast}
         />
       )}
+
+      {/* Change password modal */}
+      {showChangePassword && <ChangePasswordModal onClose={() => setShowChangePassword(false)} />}
 
       {/* Toast */}
       {toast && (
