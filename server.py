@@ -88,7 +88,15 @@ async def run_scrape_pipeline(location, limit, send_emails, run_id, categories=N
 
         log("Launching browser...")
         async with async_playwright() as p:
-            browser = await p.chromium.launch(headless=True)
+            browser = await p.chromium.launch(
+                    headless=True,
+                    args=[
+                        "--no-sandbox",
+                        "--disable-setuid-sandbox",
+                        "--disable-dev-shm-usage",
+                        "--disable-blink-features=AutomationControlled",
+                    ]
+                )
 
             from scraper import scrape_category, ALL_CATEGORIES
             # Filter to selected categories if provided
