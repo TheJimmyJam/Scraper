@@ -167,10 +167,11 @@ async def website_from_maps_profile(page, profile_url):
 
 # ── Stage 3: Google Search fallback ──────────────────────────
 
-async def website_from_google_search(page, business_name):
+async def website_from_google_search(page, business_name, location=None):
     """Search Google for the business name, return first non-directory organic URL."""
+    loc = location or LOCATION
     try:
-        query = urllib.parse.quote_plus(f'"{business_name}" {LOCATION}')
+        query = urllib.parse.quote_plus(f'"{business_name}" {loc}')
         await page.goto(
             f"https://www.google.com/search?q={query}",
             wait_until="domcontentloaded", timeout=15000,
@@ -273,8 +274,9 @@ def extract_address(html):
 
 # ── Per-business pipeline ─────────────────────────────────────
 
-async def get_business_details(page, name, profile_url, category_label):
+async def get_business_details(page, name, profile_url, category_label, location=None):
     """Full 4-stage pipeline for one business."""
+    loc = location or LOCATION
     print(f"    → {name}")
 
     # Stage 2: Maps profile — load ONCE, extract everything from the same page
@@ -298,7 +300,7 @@ async def get_business_details(page, name, profile_url, category_label):
     else:
         # Stage 3: Google Search fallback
         print(f"no Maps URL → Google search...", end=" ", flush=True)
-        website = await website_from_google_search(page, name)
+        website = await website_from_google_search(page, name, location=loc)
         if website:
             print(f"✓ {website}")
         else:
@@ -324,15 +326,16 @@ async def get_business_details(page, name, profile_url, category_label):
 
 # ── Category scraper ──────────────────────────────────────────
 
-async def scrape_category(browser, category_query, category_label, limit=10):
+async def scrape_category(browser, category_query, category_label, limit=10, location=None):
     """
     Stage 1: Load Google Maps search results, collect names + profile URLs.
     Then run the full pipeline on each.
     """
-    page = await browser.new_page()
+    loc   = location or LOCATION
+    page  = await browser.new_page()
     await page.set_extra_http_headers({"Accept-Language": "en-US,en;q=0.9"})
 
-    query = urllib.parse.quote_plus(f"{category_query} in {LOCATION}")
+    query = urllib.parse.quote_plus(f"{category_query} in {loc}")
     url   = f"https://www.google.com/maps/search/{query}"
     print(f"\n  → Searching Maps: {category_label}")
 
@@ -363,7 +366,7 @@ async def scrape_category(browser, category_query, category_label, limit=10):
     businesses = []
     for name, profile_url in listing_data[:limit * 2]:
         try:
-            details = await get_business_details(page, name, profile_url, category_label)
+            details = await get_business_details(page, name, profile_url, category_label, location=loc)
             businesses.append(details)
         except Exception as e:
             print(f"      [!] Error: {e}")

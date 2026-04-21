@@ -110,7 +110,7 @@ async def run_scrape_pipeline(location, limit, send_emails, run_id, categories=N
             for query, label in run_cats:
                 log(f"Scraping {label}...")
                 try:
-                    bizs = await scrape_category(browser, query, label, limit=limit)
+                    bizs = await scrape_category(browser, query, label, limit=limit, location=location)
                     all_businesses.extend(bizs)
                     log(f"  Found {len(bizs)} businesses")
                 except Exception as e:
