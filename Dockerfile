@@ -1,6 +1,5 @@
 FROM python:3.11-slim
 
-# Install system deps for Playwright
 RUN apt-get update && apt-get install -y \
     wget curl gnupg ca-certificates \
     libnss3 libatk1.0-0 libatk-bridge2.0-0 \
@@ -14,16 +13,13 @@ RUN apt-get update && apt-get install -y \
 
 WORKDIR /app
 
-# Install Python deps
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
-
-# Install Playwright Chromium
 RUN playwright install chromium
 
-# Copy app code
 COPY . .
 
 EXPOSE 8000
 
-CMD ["python", "-m", "uvicorn", "server:app", "--host", "0.0.0.0", "--port", "8000"]
+# Shell form so $PORT gets expanded correctly
+CMD python -m uvicorn server:app --host 0.0.0.0 --port $PORT
