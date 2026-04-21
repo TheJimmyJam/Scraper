@@ -94,7 +94,13 @@ async def run_scrape_pipeline(location, limit, send_emails, run_id, categories=N
             # Filter to selected categories if provided
             if categories:
                 cat_map = {label: query for query, label in ALL_CATEGORIES}
-                run_cats = [(cat_map[c], c) for c in categories if c in cat_map]
+                run_cats = []
+                for c in categories:
+                    if c in cat_map:
+                        run_cats.append((cat_map[c], c))
+                    else:
+                        # Custom vertical: use label as the Google Maps search query
+                        run_cats.append((c.lower(), c))
             else:
                 run_cats = ALL_CATEGORIES
 

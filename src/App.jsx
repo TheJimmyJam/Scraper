@@ -742,6 +742,8 @@ function AdminView({ scrapeRuns, onRunScraper, apiStatus, onCheckApi, onViewRun,
   const [running,     setRunning]     = useState(false)
   const [log,         setLog]         = useState([])
   const [selectedCats, setSelectedCats] = useState(new Set(ALL_CATEGORIES))
+  const [customCats,   setCustomCats]   = useState([])
+  const [customInput,  setCustomInput]  = useState('')
   const [resetStep,   setResetStep]   = useState(0)  // 0=idle, 1=first confirm, 2=resetting
 
   const toggleCat = (cat) => setSelectedCats(prev => {
@@ -753,6 +755,20 @@ function AdminView({ scrapeRuns, onRunScraper, apiStatus, onCheckApi, onViewRun,
     selectedCats.size === ALL_CATEGORIES.length ? new Set() : new Set(ALL_CATEGORIES)
   )
 
+  const addCustomCat = () => {
+    const val = customInput.trim()
+    if (!val) return
+    const normalized = val.charAt(0).toUpperCase() + val.slice(1)
+    if (!customCats.includes(normalized) && !ALL_CATEGORIES.includes(normalized)) {
+      setCustomCats(prev => [...prev, normalized])
+    }
+    setCustomInput('')
+  }
+  const removeCustomCat = (cat) => setCustomCats(prev => prev.filter(c => c !== cat))
+  const handleCustomKey = (e) => { if (e.key === 'Enter') addCustomCat() }
+
+  const totalCatCount = selectedCats.size + customCats.length
+
   const handleResetClick = async () => {
     if (resetStep === 0) { setResetStep(1); return }
     if (resetStep === 1) {
@@ -763,7 +779,7 @@ function AdminView({ scrapeRuns, onRunScraper, apiStatus, onCheckApi, onViewRun,
   }
 
   const handleRun = async () => {
-    if (selectedCats.size === 0) return
+    if (totalCatCount === 0) return
     setRunning(true)
     setLog(['Starting scraper...'])
     try {
@@ -771,7 +787,7 @@ function AdminView({ scrapeRuns, onRunScraper, apiStatus, onCheckApi, onViewRun,
         location,
         limit: parseInt(limit),
         send_emails: sendEmails,
-        categories: [...selectedCats],
+        categories: [...selectedCats, ...customCats],
       })
       setLog(prev => [...prev, ...res.log || ['Done.']])
     } catch (e) {
@@ -828,7 +844,7 @@ function AdminView({ scrapeRuns, onRunScraper, apiStatus, onCheckApi, onViewRun,
             <div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
                 <label style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1 }}>
-                  Categories ({selectedCats.size}/{ALL_CATEGORIES.length})
+                  Categories ({selectedCats.size}/{ALL_CATEGORIES.length} preset{customCats.length > 0 ? ` + ${customCats.length} custom` : ''})
                 </label>
                 <button onClick={toggleAll} style={{ background: 'none', border: 'none', color: 'var(--accent)', fontSize: 12, cursor: 'pointer', fontWeight: 600 }}>
                   {selectedCats.size === ALL_CATEGORIES.length ? 'Deselect All' : 'Select All'}
@@ -842,14 +858,39 @@ function AdminView({ scrapeRuns, onRunScraper, apiStatus, onCheckApi, onViewRun,
                   </label>
                 ))}
               </div>
+
+              {/* Custom vertical input */}
+              <div style={{ marginTop: 10 }}>
+                <div style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6 }}>Custom Vertical</div>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <input
+                    value={customInput}
+                    onChange={e => setCustomInput(e.target.value)}
+                    onKeyDown={handleCustomKey}
+                    placeholder="e.g. Yoga Studios, Pet Groomers..."
+                    style={{ flex: 1, background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 8, padding: '7px 12px', color: 'var(--text)', fontSize: 13, outline: 'none' }}
+                  />
+                  <Btn size="sm" variant="ghost" onClick={addCustomCat} disabled={!customInput.trim()}>+ Add</Btn>
+                </div>
+                {customCats.length > 0 && (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
+                    {customCats.map(cat => (
+                      <span key={cat} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: '#1a1a2e', border: '1px solid #3a3a6e', borderRadius: 20, padding: '4px 10px', fontSize: 12, color: '#a78bfa', fontWeight: 600 }}>
+                        ✦ {cat}
+                        <button onClick={() => removeCustomCat(cat)} style={{ background: 'none', border: 'none', color: '#636380', cursor: 'pointer', padding: 0, fontSize: 14, lineHeight: 1, display: 'flex', alignItems: 'center' }}>×</button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
 
             <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontSize: 14 }}>
               <input type="checkbox" checked={sendEmails} onChange={e => setSendEmails(e.target.checked)} />
               Auto-send proposals after scrape
             </label>
-            <Btn onClick={handleRun} disabled={running || apiStatus !== 'online' || selectedCats.size === 0} style={{ width: '100%', justifyContent: 'center', padding: '12px' }}>
-              {running ? '⏳ Running...' : `🚀 Run Scraper (${selectedCats.size} ${selectedCats.size === 1 ? 'category' : 'categories'})`}
+            <Btn onClick={handleRun} disabled={running || apiStatus !== 'online' || totalCatCount === 0} style={{ width: '100%', justifyContent: 'center', padding: '12px' }}>
+              {running ? '⏳ Running...' : `🚀 Run Scraper (${totalCatCount} ${totalCatCount === 1 ? 'category' : 'categories'})`}
             </Btn>
           </div>
         </Card>
