@@ -284,11 +284,39 @@ function BusinessesView({ businesses, onStatusChange, onSelect }) {
 }
 
 // ── Business Detail Modal ────────────────────────────────────
-function BusinessModal({ biz, emailLogs, followUps, feedback, onClose, onStatusChange, onAddNote, onAddFeedback, onScheduleFollowUp }) {
-  const [note, setNote]       = useState(biz.notes || '')
-  const [fbMsg, setFbMsg]     = useState('')
+function BusinessModal({ biz, emailLogs, followUps, feedback, onClose, onStatusChange, onAddNote, onAddFeedback, onScheduleFollowUp, apiStatus, onRefresh, showToast }) {
+  const [note, setNote]             = useState(biz.notes || '')
+  const [fbMsg, setFbMsg]           = useState('')
   const [fbSentiment, setFbSentiment] = useState('neutral')
-  const [fuDays, setFuDays]   = useState('5')
+  const [fuDays, setFuDays]         = useState('5')
+  const [sending, setSending]       = useState(false)
+
+  const handleViewProposal = () => {
+    window.open(`${LOCAL_API}/preview-proposal?business_id=${biz.id}`, '_blank')
+  }
+
+  const handleSendProposal = async () => {
+    if (!biz.email) { showToast('No email address on file', 'error'); return }
+    if (!window.confirm(`Send proposal to ${biz.email}?`)) return
+    setSending(true)
+    try {
+      const res = await fetch(`${LOCAL_API}/send-proposal`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ business_id: biz.id }),
+      })
+      const data = await res.json()
+      if (data.error) {
+        showToast(data.error, 'error')
+      } else {
+        showToast(`Proposal sent to ${biz.email}!`, 'success')
+        onRefresh()
+      }
+    } catch {
+      showToast('Server offline — start server.py', 'error')
+    }
+    setSending(false)
+  }
 
   const bizEmails   = emailLogs.filter(e => e.business_id === biz.id)
   const bizFollowUps = followUps.filter(f => f.business_id === biz.id)
@@ -328,6 +356,25 @@ function BusinessModal({ biz, emailLogs, followUps, feedback, onClose, onStatusC
             <div style={{ gridColumn: '1/-1' }}><div style={{ color: 'var(--muted)', fontSize: 11, marginBottom: 2 }}>Website</div>
               {biz.website ? <a href={biz.website} target="_blank" rel="noreferrer" style={{ color: 'var(--accent)', fontSize: 13 }}>{biz.website}</a> : '—'}</div>
           </div>
+        </Card>
+
+        {/* Proposal actions */}
+        <Card style={{ marginBottom: 16, background: '#0a1a0a', borderColor: '#0f5035' }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 12 }}>Proposal Email</div>
+          <div style={{ display: 'flex', gap: 10 }}>
+            <Btn variant="ghost" onClick={handleViewProposal} disabled={apiStatus !== 'online'} style={{ flex: 1, justifyContent: 'center' }}>
+              👁 View Proposal
+            </Btn>
+            <Btn variant="success" onClick={handleSendProposal} disabled={sending || apiStatus !== 'online' || !biz.email} style={{ flex: 1, justifyContent: 'center' }}>
+              {sending ? '⏳ Sending...' : '📤 Send Proposal'}
+            </Btn>
+          </div>
+          {!biz.email && (
+            <div style={{ fontSize: 12, color: '#e74c3c', marginTop: 8 }}>⚠ No email on file — scrape or add manually to send.</div>
+          )}
+          {apiStatus !== 'online' && (
+            <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 8 }}>Start the local server to use these.</div>
+          )}
         </Card>
 
         {/* Issues */}
@@ -960,6 +1007,9 @@ export default function App() {
           onAddNote={handleAddNote}
           onAddFeedback={handleAddFeedback}
           onScheduleFollowUp={handleScheduleFollowUp}
+          apiStatus={apiStatus}
+          onRefresh={loadData}
+          showToast={showToast}
         />
       )}
 
