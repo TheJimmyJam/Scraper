@@ -616,18 +616,34 @@ function AdminView({ scrapeRuns, onRunScraper, apiStatus }) {
 
       {/* API Status */}
       <Card style={{ marginBottom: 16, borderColor: apiStatus === 'online' ? '#0f5035' : '#5a1010' }}>
-        <div style={{ display: 'flex', align: 'center', gap: 10 }}>
-          <span style={{ fontSize: 18 }}>{apiStatus === 'online' ? '🟢' : '🔴'}</span>
-          <div>
-            <div style={{ fontWeight: 700, color: apiStatus === 'online' ? '#2ecc71' : '#e74c3c' }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 14 }}>
+          <span style={{ fontSize: 22, marginTop: 2 }}>{apiStatus === 'online' ? '🟢' : '🔴'}</span>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontWeight: 700, fontSize: 15, color: apiStatus === 'online' ? '#2ecc71' : '#e74c3c', marginBottom: 4 }}>
               Local API {apiStatus === 'online' ? 'Online' : 'Offline'}
             </div>
-            <div style={{ fontSize: 13, color: 'var(--muted)' }}>
-              {apiStatus === 'online'
-                ? 'Server is running. Ready to scrape.'
-                : `Start the local server: cd "Rebuild Digital Co" && python server.py`}
-            </div>
+            {apiStatus === 'online' ? (
+              <div style={{ fontSize: 13, color: 'var(--muted)' }}>Server is running. Ready to scrape.</div>
+            ) : (
+              <div style={{ fontSize: 13, color: 'var(--muted)', lineHeight: 1.7 }}>
+                <strong style={{ color: 'var(--text)' }}>To start the server:</strong><br />
+                1. Open your <strong style={{ color: 'var(--text)' }}>Rebuild Digital Co</strong> folder in Finder<br />
+                2. Double-click <strong style={{ color: '#c9a96e' }}>Start Server.command</strong><br />
+                3. Click "Open" if macOS asks for permission (one-time only)<br />
+                <span style={{ marginTop: 6, display: 'block', color: '#636380', fontSize: 12 }}>
+                  Want it to start automatically? Run <code style={{ background: '#1e1e30', padding: '1px 6px', borderRadius: 4 }}>install_autostart.sh</code> once and you'll never see this message again.
+                </span>
+              </div>
+            )}
           </div>
+          {apiStatus !== 'online' && (
+            <button
+              onClick={checkApi}
+              style={{ background: '#1e1e30', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--muted)', fontSize: 12, padding: '6px 12px', cursor: 'pointer', whiteSpace: 'nowrap', marginTop: 2 }}
+            >
+              ↻ Retry
+            </button>
+          )}
         </div>
       </Card>
 
