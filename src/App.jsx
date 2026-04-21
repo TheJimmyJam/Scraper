@@ -1045,27 +1045,6 @@ function AdminView({ scrapeRuns, onRunScraper, apiStatus, onCheckApi, onViewRun,
         </Card>
       </div>
 
-      {/* Nuclear reset — admin only */}
-      {userRole === 'admin' && <Card style={{ marginBottom: 16, borderColor: resetStep === 1 ? '#e74c3c' : 'var(--border)', background: resetStep === 1 ? '#1a0505' : 'var(--surface)' }}>
-        <div style={{ fontSize: 13, fontWeight: 700, color: '#e74c3c', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>☢ Danger Zone</div>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
-          <div style={{ fontSize: 13, color: 'var(--muted)', lineHeight: 1.6 }}>
-            <strong style={{ color: 'var(--text)' }}>Reset Database</strong> — permanently deletes all businesses, emails, follow-ups, feedback, and scrape history. This cannot be undone.
-          </div>
-          <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexShrink: 0 }}>
-            {resetStep === 1 && (
-              <span style={{ fontSize: 12, color: '#e74c3c', fontWeight: 700 }}>⚠ Are you sure? Click again to confirm.</span>
-            )}
-            {resetStep > 0 && (
-              <Btn variant="ghost" size="sm" onClick={() => setResetStep(0)} disabled={resetStep === 2}>Cancel</Btn>
-            )}
-            <Btn variant="danger" size="sm" onClick={handleResetClick} disabled={resetStep === 2}>
-              {resetStep === 0 ? '🗑 Reset Database' : resetStep === 1 ? '💀 Yes, Wipe Everything' : '⏳ Resetting...'}
-            </Btn>
-          </div>
-        </div>
-      </Card>}
-
       {/* Scrape run history */}
       <Card>
         <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 14 }}>Scrape History</div>
@@ -1118,6 +1097,27 @@ function AdminView({ scrapeRuns, onRunScraper, apiStatus, onCheckApi, onViewRun,
           </table>
         )}
       </Card>
+
+      {/* Nuclear reset — admin only, bottom of page */}
+      {userRole === 'admin' && <Card style={{ marginTop: 16, borderColor: resetStep === 1 ? '#e74c3c' : 'var(--border)', background: resetStep === 1 ? '#1a0505' : 'var(--surface)' }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: '#e74c3c', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>☢ Danger Zone</div>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
+          <div style={{ fontSize: 13, color: 'var(--muted)', lineHeight: 1.6 }}>
+            <strong style={{ color: 'var(--text)' }}>Reset Database</strong> — permanently deletes all businesses, emails, follow-ups, feedback, and scrape history. This cannot be undone.
+          </div>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexShrink: 0 }}>
+            {resetStep === 1 && (
+              <span style={{ fontSize: 12, color: '#e74c3c', fontWeight: 700 }}>⚠ Are you sure? Click again to confirm.</span>
+            )}
+            {resetStep > 0 && (
+              <Btn variant="ghost" size="sm" onClick={() => setResetStep(0)} disabled={resetStep === 2}>Cancel</Btn>
+            )}
+            <Btn variant="danger" size="sm" onClick={handleResetClick} disabled={resetStep === 2}>
+              {resetStep === 0 ? '🗑 Reset Database' : resetStep === 1 ? '💀 Yes, Wipe Everything' : '⏳ Resetting...'}
+            </Btn>
+          </div>
+        </div>
+      </Card>}
     </div>
   )
 }
