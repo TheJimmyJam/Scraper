@@ -333,14 +333,33 @@ async def scrape_category(browser, category_query, category_label, limit=10, loc
     """
     loc   = location or LOCATION
     page  = await browser.new_page()
-    await page.set_extra_http_headers({"Accept-Language": "en-US,en;q=0.9"})
+    await page.set_extra_http_headers({
+        "Accept-Language": "en-US,en;q=0.9",
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+    })
+    await page.set_viewport_size({"width": 1280, "height": 800})
 
     query = urllib.parse.quote_plus(f"{category_query} in {loc}")
     url   = f"https://www.google.com/maps/search/{query}"
     print(f"\n  → Searching Maps: {category_label}")
 
-    await page.goto(url, wait_until="domcontentloaded", timeout=25000)
-    await page.wait_for_timeout(3000)
+    try:
+        await asyncio.wait_for(
+            page.goto(url, wait_until="domcontentloaded", timeout=20000),
+            timeout=25
+        )
+    except Exception as e:
+        print(f"  [Maps load error: {e}]")
+        await page.close()
+        return []
+    await page.wait_for_timeout(2000)
+
+    # Detect Google blocking
+    title_el = await page.title()
+    if any(x in title_el.lower() for x in ["captcha", "unusual traffic", "before you continue", "verify"]):
+        print(f"  [Google blocked scrape for {category_label}]")
+        await page.close()
+        return []
 
     # Scroll to load more listings
     panel = await page.query_selector('div[role="feed"]')
