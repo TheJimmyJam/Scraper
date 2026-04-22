@@ -930,7 +930,7 @@ function AdminView({ scrapeRuns, onRunScraper, apiStatus, onCheckApi, onViewRun,
   const [selectedCats, setSelectedCats] = useState(new Set())
   const [customCats,   setCustomCats]   = useState([])
   const [customInput,  setCustomInput]  = useState('')
-  const [resetStep,   setResetStep]   = useState(0)  // 0=idle, 1=first confirm, 2=resetting
+  const [resetStep,   setResetStep]   = useState(0)  // kept for any future admin use
   const logBoxRef = useRef(null)
 
   const toggleCat = (cat) => setSelectedCats(prev => {
@@ -1183,26 +1183,55 @@ function AdminView({ scrapeRuns, onRunScraper, apiStatus, onCheckApi, onViewRun,
         )}
       </Card>
 
-      {/* Nuclear reset — admin only, bottom of page */}
-      {userRole === 'admin' && <Card style={{ marginTop: 16, borderColor: resetStep === 1 ? '#e74c3c' : 'var(--border)', background: resetStep === 1 ? '#1a0505' : 'var(--surface)' }}>
-        <div style={{ fontSize: 13, fontWeight: 700, color: '#e74c3c', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>☢ Danger Zone</div>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
-          <div style={{ fontSize: 13, color: 'var(--muted)', lineHeight: 1.6 }}>
-            <strong style={{ color: 'var(--text)' }}>Reset Database</strong> — permanently deletes all businesses, emails, follow-ups, feedback, and scrape history. This cannot be undone.
+    </div>
+  )
+}
+
+// ── Settings View ─────────────────────────────────────────────
+function SettingsView({ userRole, onResetDb }) {
+  const [resetStep, setResetStep] = useState(0)
+
+  const handleResetClick = async () => {
+    if (resetStep === 0) { setResetStep(1); return }
+    if (resetStep === 1) {
+      setResetStep(2)
+      await onResetDb()
+      setResetStep(0)
+    }
+  }
+
+  return (
+    <div>
+      <div style={{ fontSize: 22, fontWeight: 800, marginBottom: 24 }}>Settings</div>
+
+      {/* Account info */}
+      <Card style={{ marginBottom: 16 }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 14 }}>Account</div>
+        <div style={{ fontSize: 13, color: 'var(--muted)' }}>Role: <strong style={{ color: userRole === 'admin' ? '#c9a96e' : 'var(--text)', textTransform: 'capitalize' }}>{userRole}</strong></div>
+      </Card>
+
+      {/* Danger Zone — admin only */}
+      {userRole === 'admin' && (
+        <Card style={{ borderColor: resetStep === 1 ? '#e74c3c' : 'var(--border)', background: resetStep === 1 ? '#1a0505' : 'var(--surface)' }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: '#e74c3c', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>☢ Danger Zone</div>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
+            <div style={{ fontSize: 13, color: 'var(--muted)', lineHeight: 1.6 }}>
+              <strong style={{ color: 'var(--text)' }}>Reset Database</strong> — permanently deletes all businesses, emails, follow-ups, feedback, and scrape history. This cannot be undone.
+            </div>
+            <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexShrink: 0 }}>
+              {resetStep === 1 && (
+                <span style={{ fontSize: 12, color: '#e74c3c', fontWeight: 700 }}>⚠ Are you sure? Click again to confirm.</span>
+              )}
+              {resetStep > 0 && (
+                <Btn variant="ghost" size="sm" onClick={() => setResetStep(0)} disabled={resetStep === 2}>Cancel</Btn>
+              )}
+              <Btn variant="danger" size="sm" onClick={handleResetClick} disabled={resetStep === 2}>
+                {resetStep === 0 ? '🗑 Reset Database' : resetStep === 1 ? '💀 Yes, Wipe Everything' : '⏳ Resetting...'}
+              </Btn>
+            </div>
           </div>
-          <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexShrink: 0 }}>
-            {resetStep === 1 && (
-              <span style={{ fontSize: 12, color: '#e74c3c', fontWeight: 700 }}>⚠ Are you sure? Click again to confirm.</span>
-            )}
-            {resetStep > 0 && (
-              <Btn variant="ghost" size="sm" onClick={() => setResetStep(0)} disabled={resetStep === 2}>Cancel</Btn>
-            )}
-            <Btn variant="danger" size="sm" onClick={handleResetClick} disabled={resetStep === 2}>
-              {resetStep === 0 ? '🗑 Reset Database' : resetStep === 1 ? '💀 Yes, Wipe Everything' : '⏳ Resetting...'}
-            </Btn>
-          </div>
-        </div>
-      </Card>}
+        </Card>
+      )}
     </div>
   )
 }
@@ -1807,7 +1836,8 @@ export default function App() {
     { id: 'followups',  label: 'Follow-Ups',    icon: '🔁' },
     { id: 'feedback',   label: 'Feedback',      icon: '💬' },
     { id: 'scraper',    label: 'Scraper',        icon: '🕷️' },
-    { id: 'admin',      label: 'Admin / Run',   icon: '⚙️' },
+    { id: 'admin',      label: 'Admin / Run',   icon: '🛠️' },
+    { id: 'settings',   label: 'Settings',       icon: '⚙️' },
   ]
 
   const dueCount = followUps.filter(f => f.status === 'pending' && daysUntil(f.scheduled_for) <= 0).length
@@ -1842,7 +1872,7 @@ export default function App() {
                 {n.id === 'followups' && dueCount > 0 && (
                   <span style={{ marginLeft: 'auto', background: '#e74c3c', color: '#fff', borderRadius: 10, padding: '1px 7px', fontSize: 11, fontWeight: 800 }}>{dueCount}</span>
                 )}
-                {n.id === 'admin' && (
+                {n.id === 'settings' && (
                   <span style={{ marginLeft: 'auto', width: 8, height: 8, borderRadius: '50%', background: apiStatus === 'online' ? '#2ecc71' : '#e74c3c', flexShrink: 0 }} />
                 )}
               </button>
@@ -1911,6 +1941,7 @@ export default function App() {
             {tab === 'feedback'   && <FeedbackView feedback={feedback} businesses={businesses} />}
             {tab === 'scraper'    && <ScraperView scrapeRuns={scrapeRuns} apiStatus={apiStatus} showToast={showToast} />}
             {tab === 'admin'      && <AdminView scrapeRuns={scrapeRuns} onRunScraper={handleRunScraper} apiStatus={apiStatus} onCheckApi={checkApi} onViewRun={handleViewRun} onResetDb={handleResetDb} userRole={userRole} onScrapeComplete={() => loadData(true)} />}
+            {tab === 'settings'   && <SettingsView userRole={userRole} onResetDb={handleResetDb} />}
           </>
         )}
       </main>
