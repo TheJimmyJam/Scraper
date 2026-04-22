@@ -915,100 +915,22 @@ function FeedbackView({ feedback, businesses }) {
   )
 }
 
-// ── Admin Panel ──────────────────────────────────────────────
+// ── Admin Panel (System Health) ───────────────────────────────
 const ALL_CATEGORIES = [
   'Hair Salon', 'Restaurant', 'Contractor', 'Medical Office',
   'Plumber', 'Electrician', 'Dentist', 'Gym / Fitness', 'Auto Repair', 'Landscaping'
 ]
 
-function AdminView({ scrapeRuns, onRunScraper, apiStatus, onCheckApi, onViewRun, onResetDb, userRole, onScrapeComplete }) {
-  const [location,    setLocation]    = useState('Dallas, TX')
-  const [limit,       setLimit]       = useState('10')
-  const [sendEmails,  setSendEmails]  = useState(false)
-  const [running,     setRunning]     = useState(false)
-  const [log,         setLog]         = useState([])
-  const [selectedCats, setSelectedCats] = useState(new Set())
-  const [customCats,   setCustomCats]   = useState([])
-  const [customInput,  setCustomInput]  = useState('')
-  const [resetStep,   setResetStep]   = useState(0)  // kept for any future admin use
-  const logBoxRef = useRef(null)
-
-  const toggleCat = (cat) => setSelectedCats(prev => {
-    const next = new Set(prev)
-    next.has(cat) ? next.delete(cat) : next.add(cat)
-    return next
-  })
-  const toggleAll = () => setSelectedCats(
-    selectedCats.size === ALL_CATEGORIES.length ? new Set() : new Set(ALL_CATEGORIES)
-  )
-
-  const addCustomCat = () => {
-    const val = customInput.trim()
-    if (!val) return
-    const normalized = val.charAt(0).toUpperCase() + val.slice(1)
-    if (!customCats.includes(normalized) && !ALL_CATEGORIES.includes(normalized)) {
-      setCustomCats(prev => [...prev, normalized])
-    }
-    setCustomInput('')
-  }
-  const removeCustomCat = (cat) => setCustomCats(prev => prev.filter(c => c !== cat))
-  const handleCustomKey = (e) => { if (e.key === 'Enter') addCustomCat() }
-
-  const totalCatCount = selectedCats.size + customCats.length
-
-  const handleResetClick = async () => {
-    if (resetStep === 0) { setResetStep(1); return }
-    if (resetStep === 1) {
-      setResetStep(2)
-      await onResetDb()
-      setResetStep(0)
-    }
-  }
-
-  const handleRun = async () => {
-    if (totalCatCount === 0) return
-    setRunning(true)
-    setLog(['⏳ Starting scraper...'])
-
-    try {
-      await onRunScraper({
-        location,
-        limit: parseInt(limit),
-        send_emails: sendEmails,
-        categories: [...selectedCats, ...customCats],
-      })
-
-      // Poll /status every 2s to stream live server logs
-      const poll = setInterval(async () => {
-        try {
-          const res = await fetch(`${LOCAL_API}/status`, { signal: AbortSignal.timeout(3000) })
-          const data = await res.json()
-          if (data.log?.length) {
-            setLog(data.log)
-            // Auto-scroll to bottom
-            if (logBoxRef.current) logBoxRef.current.scrollTop = logBoxRef.current.scrollHeight
-          }
-          if (!data.running) {
-            clearInterval(poll)
-            setRunning(false)
-            // Silently refresh businesses + scrape history without unmounting this view
-            if (onScrapeComplete) onScrapeComplete()
-          }
-        } catch {
-          clearInterval(poll)
-          setRunning(false)
-        }
-      }, 2000)
-
-    } catch (e) {
-      setLog([`Error: ${e.message}`])
-      setRunning(false)
-    }
-  }
+function AdminView({ scrapeRuns, apiStatus, onCheckApi, userRole }) {
+  const totalRuns = scrapeRuns.length
+  const completed = scrapeRuns.filter(r => r.status === 'completed').length
+  const failed    = scrapeRuns.filter(r => r.status === 'failed').length
+  const running   = scrapeRuns.filter(r => r.status === 'running').length
 
   return (
     <div>
-      <h2 style={{ fontSize: 22, fontWeight: 800, marginBottom: 18 }}>Admin — Run Scraper</h2>
+      <h2 style={{ fontSize: 22, fontWeight: 800, marginBottom: 6 }}>Admin</h2>
+      <p style={{ color: 'var(--muted)', fontSize: 13, marginBottom: 20 }}>System health, API status, and connection info.</p>
 
       {/* API Status */}
       <Card style={{ marginBottom: 16, borderColor: apiStatus === 'online' ? '#0f5035' : '#5a1010' }}>
@@ -1019,170 +941,51 @@ function AdminView({ scrapeRuns, onRunScraper, apiStatus, onCheckApi, onViewRun,
               Railway API {apiStatus === 'online' ? 'Online' : 'Offline'}
             </div>
             {apiStatus === 'online' ? (
-              <div style={{ fontSize: 13, color: 'var(--muted)' }}>Railway is running. Ready to scrape.</div>
+              <div style={{ fontSize: 13, color: 'var(--muted)' }}>Backend is running. All systems go.</div>
             ) : (
               <div style={{ fontSize: 13, color: 'var(--muted)', lineHeight: 1.7 }}>
-                The Railway backend is not responding. This usually means a deployment is in progress (takes ~60 seconds) or the service crashed.
+                Railway backend is not responding. Deployment may be in progress (~60 seconds) or the service crashed.
                 <br />
-                <span style={{ display: 'block', marginTop: 6, fontSize: 12, color: '#636380' }}>
-                  Check your Railway dashboard for deployment status, then hit Retry.
-                </span>
+                <span style={{ display: 'block', marginTop: 6, fontSize: 12, color: '#636380' }}>Check the Railway dashboard for deployment status, then hit Retry.</span>
               </div>
             )}
           </div>
-          <button
-            onClick={onCheckApi}
-            style={{ background: '#1e1e30', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--muted)', fontSize: 12, padding: '6px 12px', cursor: 'pointer', whiteSpace: 'nowrap', marginTop: 2 }}
-          >
+          <button onClick={onCheckApi}
+            style={{ background: '#1e1e30', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--muted)', fontSize: 12, padding: '6px 12px', cursor: 'pointer', whiteSpace: 'nowrap', marginTop: 2 }}>
             ↻ Retry
           </button>
         </div>
       </Card>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
-        <Card>
-          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 14 }}>Scraper Settings</div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-            <Input label="Location" value={location} onChange={setLocation} placeholder="Dallas, TX" />
-            <Input label="Results Per Category" value={limit} onChange={setLimit} type="number" />
-
-            {/* Category selector */}
-            <div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                <label style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1 }}>
-                  Categories ({selectedCats.size}/{ALL_CATEGORIES.length} preset{customCats.length > 0 ? ` + ${customCats.length} custom` : ''})
-                </label>
-                <button onClick={toggleAll} style={{ background: 'none', border: 'none', color: 'var(--accent)', fontSize: 12, cursor: 'pointer', fontWeight: 600 }}>
-                  {selectedCats.size === ALL_CATEGORIES.length ? 'Deselect All' : 'Select All'}
-                </button>
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
-                {ALL_CATEGORIES.map(cat => (
-                  <label key={cat} style={{ display: 'flex', alignItems: 'center', gap: 7, cursor: 'pointer', fontSize: 13, padding: '5px 8px', borderRadius: 6, background: selectedCats.has(cat) ? '#1a2a1a' : 'var(--surface2)', border: `1px solid ${selectedCats.has(cat) ? '#0f5035' : 'var(--border)'}`, transition: 'all 0.1s' }}>
-                    <input type="checkbox" checked={selectedCats.has(cat)} onChange={() => toggleCat(cat)} style={{ accentColor: 'var(--accent)' }} />
-                    <span style={{ color: selectedCats.has(cat) ? '#2ecc71' : 'var(--muted)' }}>{cat}</span>
-                  </label>
-                ))}
-              </div>
-
-              {/* Custom vertical input */}
-              <div style={{ marginTop: 10 }}>
-                <div style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6 }}>Custom Vertical</div>
-                <div style={{ display: 'flex', gap: 8 }}>
-                  <input
-                    value={customInput}
-                    onChange={e => setCustomInput(e.target.value)}
-                    onKeyDown={handleCustomKey}
-                    placeholder="e.g. Yoga Studios, Pet Groomers..."
-                    style={{ flex: 1, background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 8, padding: '7px 12px', color: 'var(--text)', fontSize: 13, outline: 'none' }}
-                  />
-                  <Btn size="sm" variant="ghost" onClick={addCustomCat} disabled={!customInput.trim()}>+ Add</Btn>
-                </div>
-                {customCats.length > 0 && (
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
-                    {customCats.map(cat => (
-                      <span key={cat} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: '#1a1a2e', border: '1px solid #3a3a6e', borderRadius: 20, padding: '4px 10px', fontSize: 12, color: '#a78bfa', fontWeight: 600 }}>
-                        ✦ {cat}
-                        <button onClick={() => removeCustomCat(cat)} style={{ background: 'none', border: 'none', color: '#636380', cursor: 'pointer', padding: 0, fontSize: 14, lineHeight: 1, display: 'flex', alignItems: 'center' }}>×</button>
-                      </span>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontSize: 14 }}>
-              <input type="checkbox" checked={sendEmails} onChange={e => setSendEmails(e.target.checked)} />
-              Auto-send proposals after scrape
-            </label>
-            <Btn onClick={handleRun} disabled={running || apiStatus !== 'online' || totalCatCount === 0} style={{ width: '100%', justifyContent: 'center', padding: '12px' }}>
-              {running ? '⏳ Running...' : `🚀 Run Scraper (${totalCatCount} ${totalCatCount === 1 ? 'category' : 'categories'})`}
-            </Btn>
-          </div>
-        </Card>
-
-        {/* Live log */}
-        <Card>
-          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 14 }}>
-            Live Log {running && <span style={{ color: '#f39c12', fontWeight: 400, fontSize: 11 }}>● streaming</span>}
-          </div>
-          <div ref={logBoxRef} style={{ background: '#0a0a14', borderRadius: 8, padding: 12, height: 260, overflowY: 'auto', fontFamily: 'monospace', fontSize: 12 }}>
-            {log.length === 0
-              ? <span style={{ color: 'var(--muted)' }}>Waiting to start...</span>
-              : log.map((l, i) => (
-                <div key={i} style={{
-                  color: l.includes('Error') || l.includes('error') ? '#e74c3c'
-                       : l.includes('✓') || l.includes('complete') ? '#2ecc71'
-                       : l.includes('→') || l.includes('Scraping') ? '#a78bfa'
-                       : l.includes('Found') || l.includes('Saved') ? '#c9a96e'
-                       : '#7ec8a0',
-                  marginBottom: 3, lineHeight: 1.5,
-                }}>
-                  {l}
-                </div>
-              ))}
-          </div>
-        </Card>
+      {/* Scrape Stats */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 14, marginBottom: 16 }}>
+        <Stat label="Total Runs"  value={totalRuns} />
+        <Stat label="Completed"   value={completed} color="#2ecc71" />
+        <Stat label="Failed"      value={failed}    color={failed > 0 ? '#e74c3c' : 'var(--text)'} />
+        <Stat label="In Progress" value={running}   color={running > 0 ? '#f39c12' : 'var(--text)'} />
       </div>
 
-      {/* Scrape run history */}
+      {/* Endpoint reference */}
       <Card>
-        <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 14 }}>Scrape History</div>
-        {scrapeRuns.length === 0
-          ? <div style={{ color: 'var(--muted)', fontSize: 14 }}>No scrape runs yet.</div>
-          : (
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-            <thead>
-              <tr>
-                {['Started', 'Job Type', 'Location / Label', 'Status', 'Found', 'Emails Sent', 'Duration', ''].map(h => (
-                  <th key={h} style={{ padding: '8px 10px', textAlign: 'left', fontSize: 11, color: 'var(--muted)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1 }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {scrapeRuns.map(r => {
-                const duration = r.completed_at ? Math.round((new Date(r.completed_at) - new Date(r.started_at)) / 1000) : null
-                const clickable = r.status === 'completed' && r.businesses_found > 0
-                const cats = r.categories && r.categories !== 'all'
-                  ? r.categories.split(',').map(c => c.trim()).filter(Boolean)
-                  : null
-                return (
-                  <tr key={r.id}
-                    onClick={() => clickable && onViewRun(r)}
-                    style={{ borderTop: '1px solid var(--border)', cursor: clickable ? 'pointer' : 'default', transition: 'background 0.15s' }}
-                    onMouseEnter={e => { if (clickable) e.currentTarget.style.background = 'var(--surface2)' }}
-                    onMouseLeave={e => { e.currentTarget.style.background = '' }}
-                  >
-                    <td style={{ padding: '9px 10px', whiteSpace: 'nowrap' }}>{new Date(r.started_at || r.created_at).toLocaleString()}</td>
-                    <td style={{ padding: '9px 10px' }}>
-                      <span style={{ background: '#1a2a1a', color: '#2ecc71', border: '1px solid #0f5035', borderRadius: 6, padding: '2px 7px', fontSize: 11, fontWeight: 700 }}>
-                        {r.job_type ? r.job_type.replace(/_/g,' ') : 'google maps'}
-                      </span>
-                    </td>
-                    <td style={{ padding: '9px 10px' }}>{r.location}</td>
-                    <td style={{ padding: '9px 10px' }}>
-                      <span style={{ color: r.status === 'completed' ? '#2ecc71' : r.status === 'failed' ? '#e74c3c' : '#f39c12', fontWeight: 700, fontSize: 12 }}>{(r.status || '').toUpperCase()}</span>
-                    </td>
-                    <td style={{ padding: '9px 10px', maxWidth: 220 }}>
-                      {cats
-                        ? <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                            {cats.map(c => <span key={c} style={{ background: '#1a2a1a', color: '#2ecc71', border: '1px solid #0f5035', borderRadius: 6, padding: '2px 7px', fontSize: 11, fontWeight: 600, whiteSpace: 'nowrap' }}>{c}</span>)}
-                          </div>
-                        : <span style={{ color: 'var(--muted)', fontSize: 12 }}>All categories</span>
-                      }
-                    </td>
-                    <td style={{ padding: '9px 10px' }}>{r.businesses_found ?? '—'}</td>
-                    <td style={{ padding: '9px 10px' }}>{r.emails_sent ?? '—'}</td>
-                    <td style={{ padding: '9px 10px', color: 'var(--muted)' }}>{duration ? `${duration}s` : '—'}</td>
-                    <td style={{ padding: '9px 10px', color: 'var(--accent)', fontSize: 12 }}>{clickable ? '→ View' : ''}</td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        )}
+        <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 14 }}>API Endpoints</div>
+        <div style={{ fontFamily: 'monospace', fontSize: 12, display: 'flex', flexDirection: 'column', gap: 0 }}>
+          {[
+            ['POST', '/scrape',                  'Google Maps business pipeline'],
+            ['POST', '/universal-scrape',         'Universal job (any type)'],
+            ['GET',  '/scrape-sessions',          'List all scrape sessions'],
+            ['GET',  '/results/{session_id}',     'Results for a session'],
+            ['GET',  '/external-databases',       'List connected external DBs'],
+            ['GET',  '/status',                   'Current scrape status + log'],
+            ['GET',  '/health',                   'Health check'],
+          ].map(([method, path, desc]) => (
+            <div key={path} style={{ display: 'flex', alignItems: 'baseline', gap: 12, padding: '7px 0', borderBottom: '1px solid var(--border)' }}>
+              <span style={{ color: method === 'GET' ? '#2ecc71' : '#a78bfa', fontWeight: 700, width: 40, flexShrink: 0 }}>{method}</span>
+              <span style={{ color: 'var(--accent)', flex: 1 }}>{path}</span>
+              <span style={{ color: 'var(--muted)', fontSize: 11 }}>{desc}</span>
+            </div>
+          ))}
+        </div>
       </Card>
-
     </div>
   )
 }
@@ -1362,48 +1165,76 @@ function ResultRow({ row, cols }) {
   )
 }
 
-// ── Universal Scraper View ────────────────────────────────────
-function ScraperView({ scrapeRuns, apiStatus, showToast }) {
+// ── Merged Scraper View ───────────────────────────────────────
+function ScraperView({ apiStatus, showToast, onRunScraper, onScrapeComplete }) {
+  const [scraperMode, setScraperMode] = useState('business') // 'business' | 'custom'
   const logBoxRef = useRef(null)
-  const [jobType, setJobType]     = useState('price_scraper')
-  const [running, setRunning]     = useState(false)
-  const [log, setLog]             = useState([])
-  const [selSession, setSelSession] = useState(null)
-  const [results, setResults]     = useState([])
-  const [resLoading, setResLoading] = useState(false)
+  const [running, setRunning] = useState(false)
+  const [log, setLog]         = useState([])
 
-  // Shared fields
-  const [urls, setUrls]           = useState('')
-  const [category, setCategory]   = useState('')
-  const [limit, setLimit]         = useState('100')
-  const [label, setLabel]         = useState('')
-  // Price
-  const [rowSel, setRowSel]       = useState('')
-  const [nameSel, setNameSel]     = useState('')
-  const [priceSel, setPriceSel]   = useState('')
-  // Content
-  const [eachItem, setEachItem]   = useState('')
-  const [titleSel, setTitleSel]   = useState('h1')
-  const [bodySel, setBodySel]     = useState('')
-  // Paginated
-  const [startUrl, setStartUrl]   = useState('')
-  const [itemSel, setItemSel]     = useState('')
-  const [nextSel, setNextSel]     = useState('a[rel="next"]')
-  const [maxPages, setMaxPages]   = useState('10')
-  const [fieldsRaw, setFieldsRaw] = useState('')
-  // Trivia
-  const [useDefault, setUseDefault] = useState(true)
-  // Email
-  const [digContact, setDigContact] = useState(true)
-  // Destination — either a local table OR an external DB connection
-  const [destMode, setDestMode]     = useState('local')   // 'local' | 'external'
-  const [destTable, setDestTable]   = useState('scrape_results')
-  const [destExtId, setDestExtId]   = useState('')        // external_databases.id
-  const [tables, setTables]         = useState([])
+  // ── Business Finder state ──────────────────────────────────
+  const [location,     setLocation]     = useState('Dallas, TX')
+  const [bizLimit,     setBizLimit]     = useState('10')
+  const [sendEmails,   setSendEmails]   = useState(false)
+  const [selectedCats, setSelectedCats] = useState(new Set())
+  const [customCats,   setCustomCats]   = useState([])
+  const [customInput,  setCustomInput]  = useState('')
+
+  const toggleCat = (cat) => setSelectedCats(prev => {
+    const next = new Set(prev); next.has(cat) ? next.delete(cat) : next.add(cat); return next
+  })
+  const toggleAll = () => setSelectedCats(selectedCats.size === ALL_CATEGORIES.length ? new Set() : new Set(ALL_CATEGORIES))
+  const addCustomCat = () => {
+    const val = customInput.trim(); if (!val) return
+    const norm = val.charAt(0).toUpperCase() + val.slice(1)
+    if (!customCats.includes(norm) && !ALL_CATEGORIES.includes(norm)) setCustomCats(prev => [...prev, norm])
+    setCustomInput('')
+  }
+  const removeCustomCat = (cat) => setCustomCats(prev => prev.filter(c => c !== cat))
+  const totalCatCount = selectedCats.size + customCats.length
+
+  const handleRunBusiness = async () => {
+    if (totalCatCount === 0) return
+    setRunning(true); setLog(['⏳ Starting Business Finder...'])
+    try {
+      await onRunScraper({ location, limit: parseInt(bizLimit), send_emails: sendEmails, categories: [...selectedCats, ...customCats] })
+      const poll = setInterval(async () => {
+        try {
+          const res = await fetch(`${LOCAL_API}/status`, { signal: AbortSignal.timeout(3000) })
+          const data = await res.json()
+          if (data.log?.length) { setLog(data.log); if (logBoxRef.current) logBoxRef.current.scrollTop = logBoxRef.current.scrollHeight }
+          if (!data.running) { clearInterval(poll); setRunning(false); if (onScrapeComplete) onScrapeComplete(); showToast('Business Finder complete! Check Businesses tab.', 'success') }
+        } catch { clearInterval(poll); setRunning(false) }
+      }, 2000)
+    } catch (e) { setLog([`Error: ${e.message}`]); setRunning(false) }
+  }
+
+  // ── Custom Scraper state ───────────────────────────────────
+  const [jobType,  setJobType]  = useState('price_scraper')
+  const [urls,     setUrls]     = useState('')
+  const [category, setCategory] = useState('')
+  const [limit,    setLimit]    = useState('100')
+  const [label,    setLabel]    = useState('')
+  const [rowSel,   setRowSel]   = useState('')
+  const [nameSel,  setNameSel]  = useState('')
+  const [priceSel, setPriceSel] = useState('')
+  const [eachItem, setEachItem] = useState('')
+  const [titleSel, setTitleSel] = useState('h1')
+  const [bodySel,  setBodySel]  = useState('')
+  const [startUrl, setStartUrl] = useState('')
+  const [itemSel,  setItemSel]  = useState('')
+  const [nextSel,  setNextSel]  = useState('a[rel="next"]')
+  const [maxPages, setMaxPages] = useState('10')
+  const [fieldsRaw,setFieldsRaw]= useState('')
+  const [useDefault,  setUseDefault]  = useState(true)
+  const [digContact,  setDigContact]  = useState(true)
+  const [destMode,    setDestMode]    = useState('local')
+  const [destTable,   setDestTable]   = useState('scrape_results')
+  const [destExtId,   setDestExtId]   = useState('')
+  const [tables,      setTables]      = useState([])
   const [tablesLoading, setTablesLoading] = useState(false)
-  const [extDbs, setExtDbs]         = useState([])
+  const [extDbs,      setExtDbs]      = useState([])
 
-  // Fetch local tables + external DB connections
   useEffect(() => {
     setTablesLoading(true)
     supabase.rpc('get_user_tables')
@@ -1411,8 +1242,7 @@ function ScraperView({ scrapeRuns, apiStatus, showToast }) {
         if (data) setTables(data.map(r => r.table_name))
         else if (error) {
           fetch(`${LOCAL_API}/tables`, { signal: AbortSignal.timeout(4000) })
-            .then(r => r.json()).then(d => { if (d.tables) setTables(d.tables) })
-            .catch(() => {})
+            .then(r => r.json()).then(d => { if (d.tables) setTables(d.tables) }).catch(() => {})
         }
         setTablesLoading(false)
       })
@@ -1428,63 +1258,275 @@ function ScraperView({ scrapeRuns, apiStatus, showToast }) {
       ? { destination_table: extDbs.find(d => d.id === destExtId)?.default_table || 'scrape_results', external_db_id: destExtId }
       : { destination_table: destTable }
     if (jobType === 'price_scraper') {
-      const sel = (rowSel || nameSel || priceSel)
-        ? { row: rowSel, name: nameSel, price: priceSel }
-        : {}
+      const sel = (rowSel || nameSel || priceSel) ? { row: rowSel, name: nameSel, price: priceSel } : {}
       return { job_type: jobType, urls: urlList, category, selectors: sel, ...dest }
     }
-    if (jobType === 'trivia_scraper') {
-      return { job_type: jobType, use_default_trivia_sources: useDefault, urls: useDefault ? [] : urlList, category: category || 'trivia', limit: parseInt(limit) || 100, ...dest }
-    }
-    if (jobType === 'email_harvester') {
-      return { job_type: jobType, urls: urlList, label: label || category, dig_contact: digContact, ...dest }
-    }
-    if (jobType === 'content_scraper') {
-      return { job_type: jobType, urls: urlList, each_item: eachItem, selectors: { title: titleSel || 'h1', body: bodySel }, category, ...dest }
-    }
+    if (jobType === 'trivia_scraper')   return { job_type: jobType, use_default_trivia_sources: useDefault, urls: useDefault ? [] : urlList, category: category || 'trivia', limit: parseInt(limit) || 100, ...dest }
+    if (jobType === 'email_harvester')  return { job_type: jobType, urls: urlList, label: label || category, dig_contact: digContact, ...dest }
+    if (jobType === 'content_scraper')  return { job_type: jobType, urls: urlList, each_item: eachItem, selectors: { title: titleSel || 'h1', body: bodySel }, category, ...dest }
     if (jobType === 'paginated_scraper') {
       const fields = {}
-      fieldsRaw.split('\n').forEach(line => {
-        const [k, v] = line.split(':').map(s => s.trim())
-        if (k && v) fields[k] = v
-      })
+      fieldsRaw.split('\n').forEach(line => { const [k,v] = line.split(':').map(s=>s.trim()); if (k&&v) fields[k]=v })
       return { job_type: jobType, start_url: startUrl, item_sel: itemSel, next_sel: nextSel || 'a[rel="next"]', max_pages: parseInt(maxPages) || 10, fields, category, ...dest }
     }
   }
 
-  const handleRun = async () => {
-    const body = buildBody()
-    if (!body) return
-    setRunning(true)
-    setLog(['⏳ Starting job...'])
+  const handleRunCustom = async () => {
+    const body = buildBody(); if (!body) return
+    setRunning(true); setLog(['⏳ Starting job...'])
     try {
       const res = await fetch(`${LOCAL_API}/universal-scrape`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
       })
       const data = await res.json()
       if (data.error) { setLog([`Error: ${data.error}`]); setRunning(false); return }
       setLog([`Started session ${data.run_id}`, '⏳ Polling for updates...'])
-
       const poll = setInterval(async () => {
         try {
           const sr = await fetch(`${LOCAL_API}/status`, { signal: AbortSignal.timeout(3000) })
           const sd = await sr.json()
-          if (sd.log?.length) {
-            setLog(sd.log)
-            if (logBoxRef.current) logBoxRef.current.scrollTop = logBoxRef.current.scrollHeight
-          }
-          if (!sd.running) {
-            clearInterval(poll)
-            setRunning(false)
-            showToast('Scrape complete! Click a session below to view results.', 'success')
-          }
+          if (sd.log?.length) { setLog(sd.log); if (logBoxRef.current) logBoxRef.current.scrollTop = logBoxRef.current.scrollHeight }
+          if (!sd.running) { clearInterval(poll); setRunning(false); showToast('Scrape complete! Check History tab for results.', 'success') }
         } catch { clearInterval(poll); setRunning(false) }
       }, 2000)
     } catch (e) { setLog([`Error: ${e.message}`]); setRunning(false) }
   }
 
+  const renderLog = () => (
+    <div ref={logBoxRef} style={{ background: '#0a0a14', borderRadius: 8, padding: 12, height: 320, overflowY: 'auto', fontFamily: 'monospace', fontSize: 12 }}>
+      {log.length === 0
+        ? <span style={{ color: 'var(--muted)' }}>Waiting to start...</span>
+        : log.map((l, i) => (
+          <div key={i} style={{
+            color: l.includes('Error') || l.includes('error') || l.includes('[!]') ? '#e74c3c'
+                 : l.includes('✓') || l.includes('complete') || l.includes('Done') ? '#2ecc71'
+                 : l.includes('→') || l.includes('JOB:') || l.includes('Scraping') ? '#a78bfa'
+                 : l.includes('Found') || l.includes('Saved') || l.includes('rows') ? '#c9a96e'
+                 : '#7ec8a0',
+            marginBottom: 3, lineHeight: 1.5,
+          }}>{l}</div>
+        ))}
+    </div>
+  )
+
+  return (
+    <div>
+      <h2 style={{ fontSize: 22, fontWeight: 800, marginBottom: 6 }}>Scraper</h2>
+      <p style={{ color: 'var(--muted)', fontSize: 13, marginBottom: 20 }}>
+        Run any kind of scrape. All history and results are in the <strong>History</strong> tab.
+      </p>
+
+      {apiStatus !== 'online' && (
+        <div style={{ background: '#1a0505', border: '1px solid #5a1010', borderRadius: 10, padding: '10px 16px', marginBottom: 16, fontSize: 13, color: '#e74c3c' }}>
+          ⚠ Railway API offline — check the Admin or Settings tab.
+        </div>
+      )}
+
+      {/* Mode toggle */}
+      <div style={{ display: 'flex', gap: 0, marginBottom: 20, border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden', width: 'fit-content' }}>
+        {[
+          { id: 'business', label: '🗺️ Business Finder' },
+          { id: 'custom',   label: '🔧 Custom Scraper'  },
+        ].map(m => (
+          <button key={m.id} onClick={() => setScraperMode(m.id)}
+            style={{ padding: '10px 28px', border: 'none', background: scraperMode === m.id ? 'var(--accent)' : 'var(--surface)', color: scraperMode === m.id ? '#fff' : 'var(--muted)', fontWeight: scraperMode === m.id ? 700 : 400, fontSize: 14, cursor: 'pointer', transition: 'all 0.15s' }}>
+            {m.label}
+          </button>
+        ))}
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+        {/* ── Left: Form ── */}
+        <Card>
+          {scraperMode === 'business' ? (
+            <>
+              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 14 }}>Business Finder Settings</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                <Input label="Location" value={location} onChange={setLocation} placeholder="Dallas, TX" />
+                <Input label="Results Per Category" value={bizLimit} onChange={setBizLimit} type="number" />
+
+                {/* Category selector */}
+                <div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                    <label style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1 }}>
+                      Categories ({selectedCats.size}/{ALL_CATEGORIES.length}{customCats.length > 0 ? ` + ${customCats.length} custom` : ''})
+                    </label>
+                    <button onClick={toggleAll} style={{ background: 'none', border: 'none', color: 'var(--accent)', fontSize: 12, cursor: 'pointer', fontWeight: 600 }}>
+                      {selectedCats.size === ALL_CATEGORIES.length ? 'Deselect All' : 'Select All'}
+                    </button>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+                    {ALL_CATEGORIES.map(cat => (
+                      <label key={cat} style={{ display: 'flex', alignItems: 'center', gap: 7, cursor: 'pointer', fontSize: 13, padding: '5px 8px', borderRadius: 6, background: selectedCats.has(cat) ? '#1a2a1a' : 'var(--surface2)', border: `1px solid ${selectedCats.has(cat) ? '#0f5035' : 'var(--border)'}`, transition: 'all 0.1s' }}>
+                        <input type="checkbox" checked={selectedCats.has(cat)} onChange={() => toggleCat(cat)} style={{ accentColor: 'var(--accent)' }} />
+                        <span style={{ color: selectedCats.has(cat) ? '#2ecc71' : 'var(--muted)' }}>{cat}</span>
+                      </label>
+                    ))}
+                  </div>
+
+                  {/* Custom vertical input */}
+                  <div style={{ marginTop: 10 }}>
+                    <div style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6 }}>Custom Vertical</div>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <input value={customInput} onChange={e => setCustomInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && addCustomCat()}
+                        placeholder="e.g. Yoga Studios, Pet Groomers..."
+                        style={{ flex: 1, background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 8, padding: '7px 12px', color: 'var(--text)', fontSize: 13, outline: 'none' }} />
+                      <Btn size="sm" variant="ghost" onClick={addCustomCat} disabled={!customInput.trim()}>+ Add</Btn>
+                    </div>
+                    {customCats.length > 0 && (
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
+                        {customCats.map(cat => (
+                          <span key={cat} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: '#1a1a2e', border: '1px solid #3a3a6e', borderRadius: 20, padding: '4px 10px', fontSize: 12, color: '#a78bfa', fontWeight: 600 }}>
+                            ✦ {cat}
+                            <button onClick={() => removeCustomCat(cat)} style={{ background: 'none', border: 'none', color: '#636380', cursor: 'pointer', padding: 0, fontSize: 14, lineHeight: 1, display: 'flex', alignItems: 'center' }}>×</button>
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontSize: 14 }}>
+                  <input type="checkbox" checked={sendEmails} onChange={e => setSendEmails(e.target.checked)} />
+                  Auto-send proposals after scrape
+                </label>
+                <Btn onClick={handleRunBusiness} disabled={running || apiStatus !== 'online' || totalCatCount === 0} style={{ width: '100%', justifyContent: 'center', padding: '12px' }}>
+                  {running ? '⏳ Running...' : `🚀 Find Businesses (${totalCatCount} ${totalCatCount === 1 ? 'category' : 'categories'})`}
+                </Btn>
+              </div>
+            </>
+          ) : (
+            <>
+              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 14 }}>Configure Job</div>
+
+              {/* Job type pills */}
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 18 }}>
+                {JOB_TYPES.map(jt => (
+                  <button key={jt.id} onClick={() => setJobType(jt.id)}
+                    style={{ padding: '5px 12px', borderRadius: 20, border: `1px solid ${jobType === jt.id ? 'var(--accent)' : 'var(--border)'}`, background: jobType === jt.id ? 'var(--accent)' : 'var(--surface2)', color: jobType === jt.id ? '#fff' : 'var(--muted)', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
+                    {jt.icon} {jt.label}
+                  </button>
+                ))}
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                {jobType === 'price_scraper' && <>
+                  <Input label="URLs (one per line)" value={urls} onChange={setUrls} placeholder="https://example.com/menu" />
+                  <Input label="Category" value={category} onChange={setCategory} placeholder="e.g. Craft Beer, Food Menu" />
+                  <div style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1 }}>CSS Selectors (leave blank for auto-detect)</div>
+                  <Input label="Row container" value={rowSel} onChange={setRowSel} placeholder=".menu-item" />
+                  <Input label="Name selector" value={nameSel} onChange={setNameSel} placeholder=".item-name" />
+                  <Input label="Price selector" value={priceSel} onChange={setPriceSel} placeholder=".price" />
+                </>}
+
+                {jobType === 'trivia_scraper' && <>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontSize: 14 }}>
+                    <input type="checkbox" checked={useDefault} onChange={e => setUseDefault(e.target.checked)} />
+                    Use Open Trivia DB (free, no URLs needed)
+                  </label>
+                  {!useDefault && <Input label="URLs (one per line)" value={urls} onChange={setUrls} placeholder="https://triviasite.com/questions" />}
+                  <Input label="Category / Tag" value={category} onChange={setCategory} placeholder="Sports, History, etc." />
+                  <Input label="Max questions" value={limit} onChange={setLimit} type="number" placeholder="100" />
+                </>}
+
+                {jobType === 'email_harvester' && <>
+                  <Input label="URLs (one per line)" value={urls} onChange={setUrls} placeholder="https://example.com" />
+                  <Input label="Label" value={label} onChange={setLabel} placeholder="Dallas Restaurants, Leads Q1..." />
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontSize: 14 }}>
+                    <input type="checkbox" checked={digContact} onChange={e => setDigContact(e.target.checked)} />
+                    Also check /contact and /about pages
+                  </label>
+                </>}
+
+                {jobType === 'content_scraper' && <>
+                  <Input label="URLs (one per line)" value={urls} onChange={setUrls} placeholder="https://example.com/blog" />
+                  <Input label="Category" value={category} onChange={setCategory} placeholder="News, Blog Posts..." />
+                  <Input label="Repeating item selector" value={eachItem} onChange={setEachItem} placeholder=".article, .post-card (blank = whole page)" />
+                  <Input label="Title selector" value={titleSel} onChange={setTitleSel} placeholder="h1, h2.title" />
+                  <Input label="Body selector" value={bodySel} onChange={setBodySel} placeholder=".article-body, p.summary" />
+                </>}
+
+                {jobType === 'paginated_scraper' && <>
+                  <Input label="Start URL" value={startUrl} onChange={setStartUrl} placeholder="https://example.com/listings" />
+                  <Input label="Item selector" value={itemSel} onChange={setItemSel} placeholder=".listing-card" />
+                  <Input label="Next page selector" value={nextSel} onChange={setNextSel} placeholder='a[rel="next"]' />
+                  <Input label="Max pages" value={maxPages} onChange={setMaxPages} type="number" />
+                  <Input label="Category" value={category} onChange={setCategory} placeholder="Jobs, Listings..." />
+                  <div>
+                    <label style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1 }}>Fields (name:selector, one per line)</label>
+                    <textarea value={fieldsRaw} onChange={e => setFieldsRaw(e.target.value)} placeholder={'title:.job-title\ncompany:.company-name\nlocation:.location'}
+                      style={{ width: '100%', background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 8, padding: 10, color: 'var(--text)', fontSize: 13, resize: 'vertical', minHeight: 80, outline: 'none', marginTop: 6 }} />
+                  </div>
+                </>}
+
+                {/* Destination selector */}
+                <div style={{ borderTop: '1px solid var(--border)', paddingTop: 14, marginTop: 4 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                    <label style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1 }}>Save Results To</label>
+                    {tablesLoading && <span style={{ fontSize: 11, color: 'var(--muted)' }}>Loading...</span>}
+                  </div>
+                  <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+                    {['local', 'external'].map(m => (
+                      <button key={m} onClick={() => setDestMode(m)}
+                        style={{ flex: 1, padding: '7px 0', borderRadius: 8, border: `1px solid ${destMode === m ? 'var(--accent)' : 'var(--border)'}`, background: destMode === m ? 'rgba(99,102,241,0.15)' : 'var(--surface2)', color: destMode === m ? 'var(--accent)' : 'var(--muted)', fontWeight: destMode === m ? 700 : 400, fontSize: 13, cursor: 'pointer' }}>
+                        {m === 'local' ? '🏠 This Project' : '🌐 External DB'}
+                      </button>
+                    ))}
+                  </div>
+                  {destMode === 'local' ? (
+                    <select value={destTable} onChange={e => setDestTable(e.target.value)}
+                      style={{ width: '100%', background: 'var(--surface2)', border: `1px solid ${destTable !== 'scrape_results' ? 'var(--accent)' : 'var(--border)'}`, borderRadius: 8, padding: '9px 12px', color: destTable !== 'scrape_results' ? 'var(--accent)' : 'var(--text)', fontSize: 14, outline: 'none' }}>
+                      <option value="scrape_results">scrape_results (default)</option>
+                      {tables.filter(t => t !== 'scrape_results').map(t => <option key={t} value={t}>{t}</option>)}
+                    </select>
+                  ) : extDbs.length === 0 ? (
+                    <div style={{ fontSize: 13, color: 'var(--muted)', fontStyle: 'italic', padding: '10px 0' }}>
+                      No external databases connected. Add one in <strong>⚙️ Settings</strong>.
+                    </div>
+                  ) : (
+                    <select value={destExtId} onChange={e => setDestExtId(e.target.value)}
+                      style={{ width: '100%', background: 'var(--surface2)', border: '1px solid var(--accent)', borderRadius: 8, padding: '9px 12px', color: 'var(--accent)', fontSize: 14, outline: 'none', fontWeight: 700 }}>
+                      {extDbs.map(d => <option key={d.id} value={d.id}>🗄 {d.label}{d.default_table ? ` → ${d.default_table}` : ''}</option>)}
+                    </select>
+                  )}
+                  <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 6 }}>
+                    Results always save to <strong>scrape_results</strong> as audit trail.
+                    {destMode === 'external' && destExtId && <span style={{ color: '#c9a96e' }}> Also pushing to external DB.</span>}
+                    {destMode === 'local' && destTable !== 'scrape_results' && <span style={{ color: '#c9a96e' }}> Also pushing to <strong>{destTable}</strong>.</span>}
+                  </div>
+                </div>
+
+                <Btn onClick={handleRunCustom} disabled={running || apiStatus !== 'online'} style={{ width: '100%', justifyContent: 'center', padding: '12px', marginTop: 4 }}>
+                  {running ? '⏳ Running...' : destMode === 'external' && destExtId
+                    ? `🚀 Launch → ${extDbs.find(d => d.id === destExtId)?.label || 'External DB'}`
+                    : `🚀 Launch → ${destTable}`}
+                </Btn>
+              </div>
+            </>
+          )}
+        </Card>
+
+        {/* ── Right: Live log ── */}
+        <Card>
+          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 14 }}>
+            Live Log {running && <span style={{ color: '#f39c12', fontWeight: 400, fontSize: 11 }}>● streaming</span>}
+          </div>
+          {renderLog()}
+        </Card>
+      </div>
+    </div>
+  )
+}
+
+// ── History View ───────────────────────────────────────────────
+function HistoryView({ scrapeRuns }) {
+  const [selSession, setSelSession] = useState(null)
+  const [results,    setResults]    = useState([])
+  const [resLoading, setResLoading] = useState(false)
+  const [filter,     setFilter]     = useState('all')
+
   const loadResults = async (session) => {
+    if (selSession?.id === session.id) { setSelSession(null); setResults([]); return }
     setSelSession(session)
     setResLoading(true)
     const { data } = await supabase.from('scrape_results').select('*')
@@ -1493,189 +1535,53 @@ function ScraperView({ scrapeRuns, apiStatus, showToast }) {
     setResLoading(false)
   }
 
-  const cols = RESULT_COLS[selSession?.job_type || jobType] || ['name','category','source_url']
-
-  // Runs for this panel — exclude google_maps (handled in Admin)
-  const universalRuns = scrapeRuns.filter(r => r.job_type && r.job_type !== 'google_maps_business')
+  const jobTypes = ['all', ...new Set(scrapeRuns.map(r => r.job_type).filter(Boolean))]
+  const filtered = filter === 'all' ? scrapeRuns : scrapeRuns.filter(r => r.job_type === filter)
+  const cols = RESULT_COLS[selSession?.job_type] || ['name', 'category', 'source_url']
 
   return (
     <div>
-      <h2 style={{ fontSize: 22, fontWeight: 800, marginBottom: 6 }}>Universal Scraper</h2>
-      <p style={{ color: 'var(--muted)', fontSize: 13, marginBottom: 22 }}>
-        Scrape anything — prices, trivia, emails, articles, paginated lists. Results save automatically to the database.
+      <h2 style={{ fontSize: 22, fontWeight: 800, marginBottom: 6 }}>Scrape History</h2>
+      <p style={{ color: 'var(--muted)', fontSize: 13, marginBottom: 20 }}>
+        All scrape sessions across every job type. Click any row to expand results.
       </p>
 
-      {/* API status bar */}
-      {apiStatus !== 'online' && (
-        <div style={{ background: '#1a0505', border: '1px solid #5a1010', borderRadius: 10, padding: '10px 16px', marginBottom: 16, fontSize: 13, color: '#e74c3c' }}>
-          ⚠ Railway API is offline. Start server.py first, then retry.
-        </div>
-      )}
-
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 24 }}>
-
-        {/* ── Left: Job form ── */}
-        <Card>
-          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 14 }}>Configure Job</div>
-
-          {/* Job type tabs */}
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 18 }}>
-            {JOB_TYPES.map(jt => (
-              <button key={jt.id} onClick={() => setJobType(jt.id)}
-                style={{ padding: '5px 12px', borderRadius: 20, border: `1px solid ${jobType === jt.id ? 'var(--accent)' : 'var(--border)'}`, background: jobType === jt.id ? 'var(--accent)' : 'var(--surface2)', color: jobType === jt.id ? '#fff' : 'var(--muted)', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
-                {jt.icon} {jt.label}
-              </button>
-            ))}
-          </div>
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-
-            {/* ── Price Scraper ── */}
-            {jobType === 'price_scraper' && <>
-              <Input label="URLs (one per line)" value={urls} onChange={setUrls} placeholder="https://example.com/menu" />
-              <Input label="Category" value={category} onChange={setCategory} placeholder="e.g. Craft Beer, Food Menu" />
-              <div style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1 }}>CSS Selectors (leave blank for auto-detect)</div>
-              <Input label="Row container" value={rowSel} onChange={setRowSel} placeholder=".menu-item" />
-              <Input label="Name selector" value={nameSel} onChange={setNameSel} placeholder=".item-name" />
-              <Input label="Price selector" value={priceSel} onChange={setPriceSel} placeholder=".price" />
-            </>}
-
-            {/* ── Trivia ── */}
-            {jobType === 'trivia_scraper' && <>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontSize: 14 }}>
-                <input type="checkbox" checked={useDefault} onChange={e => setUseDefault(e.target.checked)} />
-                Use Open Trivia DB (free, no URLs needed)
-              </label>
-              {!useDefault && <Input label="URLs (one per line)" value={urls} onChange={setUrls} placeholder="https://triviasite.com/questions" />}
-              <Input label="Category / Tag" value={category} onChange={setCategory} placeholder="Sports, History, etc." />
-              <Input label="Max questions" value={limit} onChange={setLimit} type="number" placeholder="100" />
-            </>}
-
-            {/* ── Email Harvester ── */}
-            {jobType === 'email_harvester' && <>
-              <Input label="URLs (one per line)" value={urls} onChange={setUrls} placeholder="https://example.com" />
-              <Input label="Label" value={label} onChange={setLabel} placeholder="Dallas Restaurants, Leads Q1..." />
-              <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontSize: 14 }}>
-                <input type="checkbox" checked={digContact} onChange={e => setDigContact(e.target.checked)} />
-                Also check /contact and /about pages
-              </label>
-            </>}
-
-            {/* ── Content Scraper ── */}
-            {jobType === 'content_scraper' && <>
-              <Input label="URLs (one per line)" value={urls} onChange={setUrls} placeholder="https://example.com/blog" />
-              <Input label="Category" value={category} onChange={setCategory} placeholder="News, Blog Posts..." />
-              <Input label="Repeating item selector" value={eachItem} onChange={setEachItem} placeholder=".article, .post-card (blank = whole page)" />
-              <Input label="Title selector" value={titleSel} onChange={setTitleSel} placeholder="h1, h2.title" />
-              <Input label="Body selector" value={bodySel} onChange={setBodySel} placeholder=".article-body, p.summary" />
-            </>}
-
-            {/* ── Paginated ── */}
-            {jobType === 'paginated_scraper' && <>
-              <Input label="Start URL" value={startUrl} onChange={setStartUrl} placeholder="https://example.com/listings" />
-              <Input label="Item selector" value={itemSel} onChange={setItemSel} placeholder=".listing-card" />
-              <Input label="Next page selector" value={nextSel} onChange={setNextSel} placeholder='a[rel="next"]' />
-              <Input label="Max pages" value={maxPages} onChange={setMaxPages} type="number" />
-              <Input label="Category" value={category} onChange={setCategory} placeholder="Jobs, Listings..." />
-              <div>
-                <label style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1 }}>Fields (name:selector, one per line)</label>
-                <textarea value={fieldsRaw} onChange={e => setFieldsRaw(e.target.value)} placeholder={'title:.job-title\ncompany:.company-name\nlocation:.location'}
-                  style={{ width: '100%', background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 8, padding: 10, color: 'var(--text)', fontSize: 13, resize: 'vertical', minHeight: 80, outline: 'none', marginTop: 6 }} />
-              </div>
-            </>}
-
-            {/* Destination selector */}
-            <div style={{ borderTop: '1px solid var(--border)', paddingTop: 14, marginTop: 4 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                <label style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1 }}>Save Results To</label>
-                {tablesLoading && <span style={{ fontSize: 11, color: 'var(--muted)' }}>Loading...</span>}
-              </div>
-
-              {/* Mode toggle */}
-              <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
-                {['local', 'external'].map(m => (
-                  <button key={m} onClick={() => setDestMode(m)}
-                    style={{ flex: 1, padding: '7px 0', borderRadius: 8, border: `1px solid ${destMode === m ? 'var(--accent)' : 'var(--border)'}`, background: destMode === m ? 'rgba(99,102,241,0.15)' : 'var(--surface2)', color: destMode === m ? 'var(--accent)' : 'var(--muted)', fontWeight: destMode === m ? 700 : 400, fontSize: 13, cursor: 'pointer' }}>
-                    {m === 'local' ? '🏠 This Project' : '🌐 External DB'}
-                  </button>
-                ))}
-              </div>
-
-              {destMode === 'local' ? (
-                <select value={destTable} onChange={e => setDestTable(e.target.value)}
-                  style={{ width: '100%', background: 'var(--surface2)', border: `1px solid ${destTable !== 'scrape_results' ? 'var(--accent)' : 'var(--border)'}`, borderRadius: 8, padding: '9px 12px', color: destTable !== 'scrape_results' ? 'var(--accent)' : 'var(--text)', fontSize: 14, outline: 'none' }}>
-                  <option value="scrape_results">scrape_results (default)</option>
-                  {tables.filter(t => t !== 'scrape_results').map(t => <option key={t} value={t}>{t}</option>)}
-                </select>
-              ) : extDbs.length === 0 ? (
-                <div style={{ fontSize: 13, color: 'var(--muted)', fontStyle: 'italic', padding: '10px 0' }}>
-                  No external databases connected. Add one in <strong>⚙️ Settings</strong>.
-                </div>
-              ) : (
-                <select value={destExtId} onChange={e => setDestExtId(e.target.value)}
-                  style={{ width: '100%', background: 'var(--surface2)', border: '1px solid var(--accent)', borderRadius: 8, padding: '9px 12px', color: 'var(--accent)', fontSize: 14, outline: 'none', fontWeight: 700 }}>
-                  {extDbs.map(d => <option key={d.id} value={d.id}>🗄 {d.label}{d.default_table ? ` → ${d.default_table}` : ''}</option>)}
-                </select>
-              )}
-
-              <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 6 }}>
-                Results always save to <strong>scrape_results</strong> as an audit trail.
-                {destMode === 'external' && destExtId && <span style={{ color: '#c9a96e' }}> Also pushing to external DB.</span>}
-                {destMode === 'local' && destTable !== 'scrape_results' && <span style={{ color: '#c9a96e' }}> Also pushing to <strong>{destTable}</strong>.</span>}
-              </div>
-            </div>
-
-            <Btn onClick={handleRun} disabled={running || apiStatus !== 'online'} style={{ width: '100%', justifyContent: 'center', padding: '12px', marginTop: 4 }}>
-              {running ? '⏳ Running...' : destMode === 'external' && destExtId
-                ? `🚀 Launch → ${extDbs.find(d => d.id === destExtId)?.label || 'External DB'}`
-                : `🚀 Launch → ${destTable}`}
-            </Btn>
-          </div>
-        </Card>
-
-        {/* ── Right: Live log ── */}
-        <Card>
-          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 14 }}>
-            Live Log {running && <span style={{ color: '#f39c12', fontWeight: 400, fontSize: 11 }}>● streaming</span>}
-          </div>
-          <div ref={logBoxRef} style={{ background: '#0a0a14', borderRadius: 8, padding: 12, height: 340, overflowY: 'auto', fontFamily: 'monospace', fontSize: 12 }}>
-            {log.length === 0
-              ? <span style={{ color: 'var(--muted)' }}>Waiting to start...</span>
-              : log.map((l, i) => (
-                <div key={i} style={{
-                  color: l.includes('Error') || l.includes('error') || l.includes('[!]') ? '#e74c3c'
-                       : l.includes('✓') || l.includes('complete') || l.includes('Done') ? '#2ecc71'
-                       : l.includes('→') || l.includes('JOB:') ? '#a78bfa'
-                       : l.includes('Found') || l.includes('Saved') || l.includes('rows') ? '#c9a96e'
-                       : '#7ec8a0',
-                  marginBottom: 3, lineHeight: 1.5,
-                }}>{l}</div>
-              ))}
-          </div>
-        </Card>
+      {/* Filter tabs */}
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 16 }}>
+        {jobTypes.map(jt => {
+          const meta = jt === 'all'
+            ? { icon: '📋', label: 'All' }
+            : jt === 'google_maps_business'
+              ? { icon: '🗺️', label: 'Business Finder' }
+              : (JOB_TYPES.find(j => j.id === jt) || { icon: '🔧', label: jt.replace(/_/g,' ') })
+          return (
+            <button key={jt} onClick={() => { setFilter(jt); setSelSession(null); setResults([]) }}
+              style={{ padding: '5px 14px', borderRadius: 20, border: `1px solid ${filter === jt ? 'var(--accent)' : 'var(--border)'}`, background: filter === jt ? 'var(--accent)' : 'var(--surface2)', color: filter === jt ? '#fff' : 'var(--muted)', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
+              {meta.icon} {meta.label}
+            </button>
+          )
+        })}
       </div>
 
-      {/* ── Session History ── */}
       <Card style={{ marginBottom: selSession ? 16 : 0 }}>
-        <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 14 }}>
-          Scrape Sessions — click to view results
-        </div>
-        {universalRuns.length === 0
-          ? <div style={{ color: 'var(--muted)', fontSize: 14 }}>No universal scrape jobs run yet. Launch one above.</div>
+        {filtered.length === 0
+          ? <div style={{ color: 'var(--muted)', fontSize: 14 }}>No scrape runs yet. Launch one from the Scraper tab.</div>
           : (
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
               <thead>
                 <tr>
-                  {['Started', 'Job Type', 'Category', 'Status', 'Results', 'Duration', ''].map(h => (
+                  {['Started', 'Job Type', 'Location / Label', 'Status', 'Results', 'Emails', 'Duration', ''].map(h => (
                     <th key={h} style={{ padding: '8px 10px', textAlign: 'left', fontSize: 11, color: 'var(--muted)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1, whiteSpace: 'nowrap' }}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {universalRuns.map(r => {
-                  const duration = r.completed_at ? Math.round((new Date(r.completed_at) - new Date(r.started_at || r.created_at)) / 1000) : null
-                  const jt = JOB_TYPES.find(j => j.id === r.job_type)
+                {filtered.map(r => {
+                  const duration = r.completed_at ? Math.round((new Date(r.completed_at) - new Date(r.started_at)) / 1000) : null
+                  const jt = r.job_type === 'google_maps_business'
+                    ? { icon: '🗺️', label: 'Business Finder' }
+                    : (JOB_TYPES.find(j => j.id === r.job_type) || { icon: '🔧', label: (r.job_type || '—').replace(/_/g,' ') })
                   const isSelected = selSession?.id === r.id
                   return (
                     <tr key={r.id} onClick={() => loadResults(r)}
@@ -1684,18 +1590,19 @@ function ScraperView({ scrapeRuns, apiStatus, showToast }) {
                       onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = '' }}>
                       <td style={{ padding: '9px 10px', whiteSpace: 'nowrap' }}>{new Date(r.started_at || r.created_at).toLocaleString()}</td>
                       <td style={{ padding: '9px 10px' }}>
-                        <span style={{ background: '#1a2a1a', color: '#2ecc71', border: '1px solid #0f5035', borderRadius: 6, padding: '2px 8px', fontSize: 11, fontWeight: 700 }}>
-                          {jt ? `${jt.icon} ${jt.label}` : r.job_type}
+                        <span style={{ background: '#1a2a1a', color: '#2ecc71', border: '1px solid #0f5035', borderRadius: 6, padding: '2px 8px', fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap' }}>
+                          {jt.icon} {jt.label}
                         </span>
                       </td>
-                      <td style={{ padding: '9px 10px', color: 'var(--muted)' }}>{r.categories || '—'}</td>
+                      <td style={{ padding: '9px 10px', color: 'var(--muted)', maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.location || r.categories || '—'}</td>
                       <td style={{ padding: '9px 10px' }}>
-                        <span style={{ color: r.status === 'completed' ? '#2ecc71' : r.status === 'failed' ? '#e74c3c' : '#f39c12', fontWeight: 700, fontSize: 12 }}>{r.status?.toUpperCase()}</span>
+                        <span style={{ color: r.status === 'completed' ? '#2ecc71' : r.status === 'failed' ? '#e74c3c' : '#f39c12', fontWeight: 700, fontSize: 12 }}>{(r.status || '').toUpperCase()}</span>
                       </td>
                       <td style={{ padding: '9px 10px', fontWeight: 700, color: '#c9a96e' }}>{r.result_count ?? r.businesses_found ?? '—'}</td>
+                      <td style={{ padding: '9px 10px', color: 'var(--muted)' }}>{r.emails_sent ?? '—'}</td>
                       <td style={{ padding: '9px 10px', color: 'var(--muted)' }}>{duration ? `${duration}s` : '—'}</td>
                       <td style={{ padding: '9px 10px', color: 'var(--accent)', fontSize: 12, whiteSpace: 'nowrap' }}>
-                        {isSelected ? '▼ Viewing' : '→ View'}
+                        {isSelected ? '▼ Hide' : '→ View'}
                       </td>
                     </tr>
                   )
@@ -1706,21 +1613,22 @@ function ScraperView({ scrapeRuns, apiStatus, showToast }) {
         )}
       </Card>
 
-      {/* ── Results Table ── */}
       {selSession && (
         <Card>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
             <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: 1 }}>
-              Results — {selSession.categories || selSession.job_type}
+              Results — {selSession.categories || selSession.location || selSession.job_type}
               <span style={{ color: '#c9a96e', marginLeft: 10, fontWeight: 400, fontSize: 12 }}>({results.length} rows)</span>
             </div>
             <Btn size="sm" variant="ghost" onClick={() => { setSelSession(null); setResults([]) }}>✕ Close</Btn>
           </div>
-
           {resLoading ? (
             <div style={{ color: 'var(--muted)', fontSize: 14, padding: '32px 0', textAlign: 'center' }}>Loading results...</div>
           ) : results.length === 0 ? (
-            <div style={{ color: 'var(--muted)', fontSize: 14, padding: '16px 0' }}>No results found for this session. The job may still be running.</div>
+            <div style={{ color: 'var(--muted)', fontSize: 14, padding: '16px 0' }}>
+              No results stored for this session in scrape_results.
+              {selSession.job_type === 'google_maps_business' && ' Business Finder results are in the Businesses tab.'}
+            </div>
           ) : (
             <div style={{ overflowX: 'auto', borderRadius: 8, border: '1px solid var(--border)' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', background: 'var(--surface)', fontSize: 13 }}>
@@ -1949,14 +1857,15 @@ export default function App() {
   }
 
   const NAV = [
-    { id: 'dashboard',  label: 'Dashboard',    icon: '📊' },
-    { id: 'businesses', label: 'Businesses',    icon: '🏢' },
-    { id: 'emails',     label: 'Emails',        icon: '📧' },
-    { id: 'followups',  label: 'Follow-Ups',    icon: '🔁' },
-    { id: 'feedback',   label: 'Feedback',      icon: '💬' },
-    { id: 'scraper',    label: 'Scraper',        icon: '🕷️' },
-    { id: 'admin',      label: 'Admin / Run',   icon: '🛠️' },
-    { id: 'settings',   label: 'Settings',       icon: '⚙️' },
+    { id: 'dashboard',  label: 'Dashboard',  icon: '📊' },
+    { id: 'businesses', label: 'Businesses', icon: '🏢' },
+    { id: 'emails',     label: 'Emails',     icon: '📧' },
+    { id: 'followups',  label: 'Follow-Ups', icon: '🔁' },
+    { id: 'feedback',   label: 'Feedback',   icon: '💬' },
+    { id: 'scraper',    label: 'Scraper',    icon: '🕷️' },
+    { id: 'history',    label: 'History',    icon: '📋' },
+    { id: 'admin',      label: 'Admin',      icon: '🛠️' },
+    { id: 'settings',   label: 'Settings',   icon: '⚙️' },
   ]
 
   const dueCount = followUps.filter(f => f.status === 'pending' && daysUntil(f.scheduled_for) <= 0).length
@@ -2058,8 +1967,9 @@ export default function App() {
             {tab === 'emails'     && <EmailsView emailLogs={emailLogs} businesses={businesses} />}
             {tab === 'followups'  && <FollowUpsView followUps={followUps} businesses={businesses} onMarkSent={handleMarkSent} onSendFollowUp={handleSendFollowUp} />}
             {tab === 'feedback'   && <FeedbackView feedback={feedback} businesses={businesses} />}
-            {tab === 'scraper'    && <ScraperView scrapeRuns={scrapeRuns} apiStatus={apiStatus} showToast={showToast} />}
-            {tab === 'admin'      && <AdminView scrapeRuns={scrapeRuns} onRunScraper={handleRunScraper} apiStatus={apiStatus} onCheckApi={checkApi} onViewRun={handleViewRun} onResetDb={handleResetDb} userRole={userRole} onScrapeComplete={() => loadData(true)} />}
+            {tab === 'scraper'    && <ScraperView apiStatus={apiStatus} showToast={showToast} onRunScraper={handleRunScraper} onScrapeComplete={() => loadData(true)} />}
+            {tab === 'history'    && <HistoryView scrapeRuns={scrapeRuns} />}
+            {tab === 'admin'      && <AdminView scrapeRuns={scrapeRuns} apiStatus={apiStatus} onCheckApi={checkApi} userRole={userRole} />}
             {tab === 'settings'   && <SettingsView userRole={userRole} onResetDb={handleResetDb} />}
           </>
         )}
@@ -2093,7 +2003,7 @@ export default function App() {
             <button key={n.id} onClick={() => setTab(n.id)}
               style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, padding: '8px 2px 6px', border: 'none', background: 'transparent', color: tab === n.id ? 'var(--accent)' : 'var(--muted)', fontSize: 10, fontWeight: tab === n.id ? 700 : 400, cursor: 'pointer', position: 'relative' }}>
               <span style={{ fontSize: 18 }}>{n.icon}</span>
-              <span style={{ fontSize: 9, letterSpacing: -0.2 }}>{n.id === 'followups' ? 'Follow-Ups' : n.id === 'admin' ? 'Admin' : n.label}</span>
+              <span style={{ fontSize: 9, letterSpacing: -0.2 }}>{n.id === 'followups' ? 'Follow-Ups' : n.label}</span>
               {n.id === 'followups' && dueCount > 0 && (
                 <span style={{ position: 'absolute', top: 4, right: '50%', transform: 'translateX(10px)', background: '#e74c3c', color: '#fff', borderRadius: 8, padding: '1px 5px', fontSize: 9, fontWeight: 800 }}>{dueCount}</span>
               )}

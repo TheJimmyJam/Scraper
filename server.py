@@ -996,8 +996,8 @@ async def get_scrape_sessions(limit: int = Query(20, le=100), offset: int = 0):
     try:
         resp = (
             db.table("scrape_runs")
-            .select("id, job_type, location, categories, status, result_count, businesses_found, emails_queued, created_at, completed_at, error_message")
-            .order("created_at", desc=True)
+            .select("id, job_type, location, categories, status, result_count, businesses_found, emails_sent, emails_queued, started_at, completed_at, error_message")
+            .order("started_at", desc=True)
             .range(offset, offset + limit - 1)
             .execute()
         )
