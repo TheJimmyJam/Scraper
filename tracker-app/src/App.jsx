@@ -1189,7 +1189,21 @@ function AdminView({ scrapeRuns, onRunScraper, apiStatus, onCheckApi, onViewRun,
 
 // ── Settings View ─────────────────────────────────────────────
 function SettingsView({ userRole, onResetDb }) {
-  const [resetStep, setResetStep] = useState(0)
+  const [resetStep,    setResetStep]    = useState(0)
+  const [extDbs,       setExtDbs]       = useState([])
+  const [dbsLoading,   setDbsLoading]   = useState(true)
+  const [showAddForm,  setShowAddForm]  = useState(false)
+  const [saving,       setSaving]       = useState(false)
+  const [deleteId,     setDeleteId]     = useState(null)
+  const [form, setForm] = useState({ label: '', supabase_url: '', supabase_key: '', default_table: '' })
+
+  useEffect(() => {
+    fetch(`${LOCAL_API}/external-databases`)
+      .then(r => r.json())
+      .then(d => setExtDbs(d.databases || []))
+      .catch(() => {})
+      .finally(() => setDbsLoading(false))
+  }, [])
 
   const handleResetClick = async () => {
     if (resetStep === 0) { setResetStep(1); return }
@@ -1198,6 +1212,34 @@ function SettingsView({ userRole, onResetDb }) {
       await onResetDb()
       setResetStep(0)
     }
+  }
+
+  const handleAddDb = async () => {
+    if (!form.label || !form.supabase_url || !form.supabase_key) return
+    setSaving(true)
+    try {
+      const res = await fetch(`${LOCAL_API}/external-databases`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(form),
+      })
+      const data = await res.json()
+      if (data.ok) {
+        setExtDbs(prev => [...prev, data.database])
+        setForm({ label: '', supabase_url: '', supabase_key: '', default_table: '' })
+        setShowAddForm(false)
+      }
+    } catch {}
+    setSaving(false)
+  }
+
+  const handleDeleteDb = async (id) => {
+    if (deleteId !== id) { setDeleteId(id); return }
+    try {
+      await fetch(`${LOCAL_API}/external-databases/${id}`, { method: 'DELETE' })
+      setExtDbs(prev => prev.filter(d => d.id !== id))
+    } catch {}
+    setDeleteId(null)
   }
 
   return (
@@ -1210,6 +1252,48 @@ function SettingsView({ userRole, onResetDb }) {
         <div style={{ fontSize: 13, color: 'var(--muted)' }}>Role: <strong style={{ color: userRole === 'admin' ? '#c9a96e' : 'var(--text)', textTransform: 'capitalize' }}>{userRole}</strong></div>
       </Card>
 
+      {/* Connected Databases */}
+      <Card style={{ marginBottom: 16 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: 1 }}>🗄 Connected Databases</div>
+          <Btn size="sm" onClick={() => setShowAddForm(v => !v)}>{showAddForm ? 'Cancel' : '+ Add Database'}</Btn>
+        </div>
+
+        <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 14, lineHeight: 1.6 }}>
+          Connect external Supabase projects so the scraper can save directly into them — trivia DB, car prices DB, etc. Each connection appears in the Scraper's "Save To" dropdown.
+        </div>
+
+        {showAddForm && (
+          <div style={{ background: 'var(--bg)', borderRadius: 8, padding: 16, marginBottom: 16, border: '1px solid var(--border)' }}>
+            <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 12 }}>New Database Connection</div>
+            <Input label="Label (e.g. Trivia DB)" value={form.label} onChange={v => setForm(f => ({ ...f, label: v }))} placeholder="My Trivia Database" />
+            <Input label="Supabase URL" value={form.supabase_url} onChange={v => setForm(f => ({ ...f, supabase_url: v }))} placeholder="https://xyz.supabase.co" />
+            <Input label="Supabase Anon Key" value={form.supabase_key} onChange={v => setForm(f => ({ ...f, supabase_key: v }))} placeholder="eyJ..." />
+            <Input label="Default Table (optional)" value={form.default_table} onChange={v => setForm(f => ({ ...f, default_table: v }))} placeholder="trivia_questions" />
+            <Btn onClick={handleAddDb} disabled={saving || !form.label || !form.supabase_url || !form.supabase_key} style={{ marginTop: 8 }}>
+              {saving ? '⏳ Saving...' : '💾 Save Connection'}
+            </Btn>
+          </div>
+        )}
+
+        {dbsLoading
+          ? <div style={{ fontSize: 13, color: 'var(--muted)' }}>Loading...</div>
+          : extDbs.length === 0
+            ? <div style={{ fontSize: 13, color: 'var(--muted)', fontStyle: 'italic' }}>No external databases connected yet.</div>
+            : extDbs.map(d => (
+              <div key={d.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 0', borderBottom: '1px solid var(--border)' }}>
+                <div>
+                  <div style={{ fontWeight: 600, fontSize: 14 }}>🗄 {d.label}</div>
+                  <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>{d.supabase_url}{d.default_table ? ` → ${d.default_table}` : ''}</div>
+                </div>
+                <Btn variant="danger" size="sm" onClick={() => handleDeleteDb(d.id)}>
+                  {deleteId === d.id ? '⚠ Confirm' : 'Remove'}
+                </Btn>
+              </div>
+            ))
+        }
+      </Card>
+
       {/* Danger Zone — admin only */}
       {userRole === 'admin' && (
         <Card style={{ borderColor: resetStep === 1 ? '#e74c3c' : 'var(--border)', background: resetStep === 1 ? '#1a0505' : 'var(--surface)' }}>
@@ -1219,12 +1303,8 @@ function SettingsView({ userRole, onResetDb }) {
               <strong style={{ color: 'var(--text)' }}>Reset Database</strong> — permanently deletes all businesses, emails, follow-ups, feedback, and scrape history. This cannot be undone.
             </div>
             <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexShrink: 0 }}>
-              {resetStep === 1 && (
-                <span style={{ fontSize: 12, color: '#e74c3c', fontWeight: 700 }}>⚠ Are you sure? Click again to confirm.</span>
-              )}
-              {resetStep > 0 && (
-                <Btn variant="ghost" size="sm" onClick={() => setResetStep(0)} disabled={resetStep === 2}>Cancel</Btn>
-              )}
+              {resetStep === 1 && <span style={{ fontSize: 12, color: '#e74c3c', fontWeight: 700 }}>⚠ Are you sure? Click again to confirm.</span>}
+              {resetStep > 0 && <Btn variant="ghost" size="sm" onClick={() => setResetStep(0)} disabled={resetStep === 2}>Cancel</Btn>}
               <Btn variant="danger" size="sm" onClick={handleResetClick} disabled={resetStep === 2}>
                 {resetStep === 0 ? '🗑 Reset Database' : resetStep === 1 ? '💀 Yes, Wipe Everything' : '⏳ Resetting...'}
               </Btn>
@@ -1305,30 +1385,38 @@ function ScraperView({ scrapeRuns, apiStatus, showToast }) {
   const [useDefault, setUseDefault] = useState(true)
   // Email
   const [digContact, setDigContact] = useState(true)
-  // Destination table
+  // Destination — either a local table OR an external DB connection
+  const [destMode, setDestMode]     = useState('local')   // 'local' | 'external'
   const [destTable, setDestTable]   = useState('scrape_results')
+  const [destExtId, setDestExtId]   = useState('')        // external_databases.id
   const [tables, setTables]         = useState([])
   const [tablesLoading, setTablesLoading] = useState(false)
+  const [extDbs, setExtDbs]         = useState([])
 
-  // Fetch available Supabase tables for the destination selector
+  // Fetch local tables + external DB connections
   useEffect(() => {
     setTablesLoading(true)
     supabase.rpc('get_user_tables')
       .then(({ data, error }) => {
         if (data) setTables(data.map(r => r.table_name))
         else if (error) {
-          // Fallback: try the Railway API endpoint
           fetch(`${LOCAL_API}/tables`, { signal: AbortSignal.timeout(4000) })
             .then(r => r.json()).then(d => { if (d.tables) setTables(d.tables) })
             .catch(() => {})
         }
         setTablesLoading(false)
       })
+    fetch(`${LOCAL_API}/external-databases`)
+      .then(r => r.json())
+      .then(d => { if (d.databases) { setExtDbs(d.databases); if (d.databases.length) setDestExtId(d.databases[0].id) } })
+      .catch(() => {})
   }, [])
 
   const buildBody = () => {
     const urlList = urls.split('\n').map(u => u.trim()).filter(Boolean)
-    const dest = { destination_table: destTable }
+    const dest = destMode === 'external' && destExtId
+      ? { destination_table: extDbs.find(d => d.id === destExtId)?.default_table || 'scrape_results', external_db_id: destExtId }
+      : { destination_table: destTable }
     if (jobType === 'price_scraper') {
       const sel = (rowSel || nameSel || priceSel)
         ? { row: rowSel, name: nameSel, price: priceSel }
@@ -1486,30 +1574,51 @@ function ScraperView({ scrapeRuns, apiStatus, showToast }) {
               </div>
             </>}
 
-            {/* Destination table selector */}
+            {/* Destination selector */}
             <div style={{ borderTop: '1px solid var(--border)', paddingTop: 14, marginTop: 4 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                <label style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1 }}>
-                  Save Results To
-                </label>
-                {tablesLoading && <span style={{ fontSize: 11, color: 'var(--muted)' }}>Loading tables...</span>}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                <label style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1 }}>Save Results To</label>
+                {tablesLoading && <span style={{ fontSize: 11, color: 'var(--muted)' }}>Loading...</span>}
               </div>
-              <select value={destTable} onChange={e => setDestTable(e.target.value)}
-                style={{ width: '100%', background: 'var(--surface2)', border: `1px solid ${destTable !== 'scrape_results' ? 'var(--accent)' : 'var(--border)'}`, borderRadius: 8, padding: '9px 12px', color: destTable !== 'scrape_results' ? 'var(--accent)' : 'var(--text)', fontSize: 14, outline: 'none', fontWeight: destTable !== 'scrape_results' ? 700 : 400 }}>
-                <option value="scrape_results">scrape_results (default — always saved here)</option>
-                {tables.filter(t => t !== 'scrape_results').map(t => (
-                  <option key={t} value={t}>{t}</option>
+
+              {/* Mode toggle */}
+              <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+                {['local', 'external'].map(m => (
+                  <button key={m} onClick={() => setDestMode(m)}
+                    style={{ flex: 1, padding: '7px 0', borderRadius: 8, border: `1px solid ${destMode === m ? 'var(--accent)' : 'var(--border)'}`, background: destMode === m ? 'rgba(99,102,241,0.15)' : 'var(--surface2)', color: destMode === m ? 'var(--accent)' : 'var(--muted)', fontWeight: destMode === m ? 700 : 400, fontSize: 13, cursor: 'pointer' }}>
+                    {m === 'local' ? '🏠 This Project' : '🌐 External DB'}
+                  </button>
                 ))}
-              </select>
-              {destTable !== 'scrape_results' && (
-                <div style={{ fontSize: 12, color: '#c9a96e', marginTop: 6 }}>
-                  Results will be saved to both <strong>scrape_results</strong> (audit trail) and <strong>{destTable}</strong>. Only fields matching that table's columns will be inserted.
+              </div>
+
+              {destMode === 'local' ? (
+                <select value={destTable} onChange={e => setDestTable(e.target.value)}
+                  style={{ width: '100%', background: 'var(--surface2)', border: `1px solid ${destTable !== 'scrape_results' ? 'var(--accent)' : 'var(--border)'}`, borderRadius: 8, padding: '9px 12px', color: destTable !== 'scrape_results' ? 'var(--accent)' : 'var(--text)', fontSize: 14, outline: 'none' }}>
+                  <option value="scrape_results">scrape_results (default)</option>
+                  {tables.filter(t => t !== 'scrape_results').map(t => <option key={t} value={t}>{t}</option>)}
+                </select>
+              ) : extDbs.length === 0 ? (
+                <div style={{ fontSize: 13, color: 'var(--muted)', fontStyle: 'italic', padding: '10px 0' }}>
+                  No external databases connected. Add one in <strong>⚙️ Settings</strong>.
                 </div>
+              ) : (
+                <select value={destExtId} onChange={e => setDestExtId(e.target.value)}
+                  style={{ width: '100%', background: 'var(--surface2)', border: '1px solid var(--accent)', borderRadius: 8, padding: '9px 12px', color: 'var(--accent)', fontSize: 14, outline: 'none', fontWeight: 700 }}>
+                  {extDbs.map(d => <option key={d.id} value={d.id}>🗄 {d.label}{d.default_table ? ` → ${d.default_table}` : ''}</option>)}
+                </select>
               )}
+
+              <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 6 }}>
+                Results always save to <strong>scrape_results</strong> as an audit trail.
+                {destMode === 'external' && destExtId && <span style={{ color: '#c9a96e' }}> Also pushing to external DB.</span>}
+                {destMode === 'local' && destTable !== 'scrape_results' && <span style={{ color: '#c9a96e' }}> Also pushing to <strong>{destTable}</strong>.</span>}
+              </div>
             </div>
 
             <Btn onClick={handleRun} disabled={running || apiStatus !== 'online'} style={{ width: '100%', justifyContent: 'center', padding: '12px', marginTop: 4 }}>
-              {running ? '⏳ Running...' : `🚀 Launch → ${destTable}`}
+              {running ? '⏳ Running...' : destMode === 'external' && destExtId
+                ? `🚀 Launch → ${extDbs.find(d => d.id === destExtId)?.label || 'External DB'}`
+                : `🚀 Launch → ${destTable}`}
             </Btn>
           </div>
         </Card>

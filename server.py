@@ -122,7 +122,8 @@ class UniversalScrapeRequest(BaseModel):
     max_pages:  int  = 10
 
     # ── Destination ─────────────────────────────────
-    destination_table: str = "scrape_results"  # which Supabase table to save results into
+    destination_table: str           = "scrape_results"  # table in home project
+    external_db_id:    Optional[str] = None              # UUID of an external_databases row
 
 
 class PriceScrapeRequest(BaseModel):
@@ -352,37 +353,34 @@ def _build_job_dict(req: UniversalScrapeRequest) -> dict:
     return job
 
 
-def _save_to_destination_table(table: str, results: list):
+def _save_to_destination_table(table: str, results: list, ext_db=None):
     """
-    Save scraped rows into a user-chosen Supabase table.
-    Queries the table's column list first so we only pass fields that exist —
-    extra scraped fields are silently dropped, missing columns get their DB defaults.
-    Always a no-op when table == 'scrape_results' (that's already handled separately).
+    Save scraped rows into a user-chosen table.
+    ext_db: a supabase client for an external project, or None to use the default db.
+    Queries column list first so only matching fields are inserted.
     """
-    if not db or not results or not table or table == "scrape_results":
+    client = ext_db or db
+    if not client or not results or not table or (table == "scrape_results" and ext_db is None):
         return
 
     try:
-        cols_resp = db.rpc("get_table_columns", {"p_table_name": table}).execute()
+        cols_resp = client.rpc("get_table_columns", {"p_table_name": table}).execute()
         if not cols_resp.data:
-            log(f"  [!] '{table}' not found or has no columns — skipping destination save")
-            return
-
-        valid_cols = {r["column_name"] for r in cols_resp.data}
-        log(f"  → Destination '{table}' columns: {', '.join(sorted(valid_cols))}")
-
-        rows = []
-        for row in results:
-            filtered = {k: v for k, v in row.items() if k in valid_cols}
-            if filtered:
-                rows.append(filtered)
+            # Fall back: try information_schema directly
+            log(f"  [!] get_table_columns RPC not found on external DB — inserting all fields")
+            rows = results
+        else:
+            valid_cols = {r["column_name"] for r in cols_resp.data}
+            log(f"  → Destination '{table}' columns: {', '.join(sorted(valid_cols))}")
+            rows = [{k: v for k, v in row.items() if k in valid_cols} for row in results]
+            rows = [r for r in rows if r]
 
         if not rows:
             log(f"  [!] No scraped fields matched columns in '{table}' — nothing inserted")
             return
 
         for i in range(0, len(rows), 100):
-            db.table(table).insert(rows[i:i + 100]).execute()
+            client.table(table).insert(rows[i:i + 100]).execute()
 
         log(f"  ✓ {len(rows)} rows → {table}")
 
@@ -390,7 +388,29 @@ def _save_to_destination_table(table: str, results: list):
         log(f"  [!] Could not save to '{table}': {e}")
 
 
-async def run_universal_pipeline(job: dict, run_id: Optional[str], destination_table: str = "scrape_results"):
+def _get_external_db_client(ext_db_id: str):
+    """Fetch external DB credentials from Supabase and return a client, or None."""
+    if not db or not ext_db_id:
+        return None, None
+    try:
+        resp = db.table("external_databases").select("*").eq("id", ext_db_id).single().execute()
+        if not resp.data:
+            log(f"  [!] External DB '{ext_db_id}' not found")
+            return None, None
+        rec = resp.data
+        ext_client = create_client(rec["supabase_url"], rec["supabase_key"])
+        return ext_client, rec
+    except Exception as e:
+        log(f"  [!] Could not load external DB: {e}")
+        return None, None
+
+
+async def run_universal_pipeline(
+    job: dict,
+    run_id: Optional[str],
+    destination_table: str = "scrape_results",
+    external_db_id: Optional[str] = None,
+):
     scrape_state["running"]  = True
     scrape_state["job_type"] = job["type"]
     scrape_state["log"]      = [f"[{datetime.now().strftime('%H:%M:%S')}] Starting {job['type']} job..."]
@@ -409,18 +429,34 @@ async def run_universal_pipeline(job: dict, run_id: Optional[str], destination_t
         log(f"Scrape complete — {len(results)} results")
 
         if db:
+            # Always save audit trail to scrape_results in the home project
             log("Saving to scrape_results (audit trail)...")
             _save_results_to_db(results, job["type"], run_id)
 
-            if destination_table and destination_table != "scrape_results":
+            if external_db_id:
+                # Save to an external Supabase project
+                log(f"Loading external database connection...")
+                ext_client, ext_rec = _get_external_db_client(external_db_id)
+                if ext_client:
+                    tbl = destination_table or ext_rec.get("default_table", "scrape_results")
+                    log(f"Saving to external DB '{ext_rec['label']}' → table '{tbl}'...")
+                    _save_to_destination_table(tbl, results, ext_db=ext_client)
+                else:
+                    log("[!] Could not connect to external DB — data is in audit trail only")
+            elif destination_table and destination_table != "scrape_results":
+                # Save to a different table in the home project
                 log(f"Saving to destination table: {destination_table}...")
                 _save_to_destination_table(destination_table, results)
         else:
             log("[!] No DB connection — results not persisted")
 
         _finish_run(run_id, len(results))
-        log(f"Done. Session {run_id} complete. Results in: scrape_results" +
-            (f" + {destination_table}" if destination_table != "scrape_results" else ""))
+        dest_label = (
+            f"external DB '{external_db_id}'" if external_db_id
+            else destination_table if destination_table != "scrape_results"
+            else "scrape_results"
+        )
+        log(f"Done. Session {run_id} complete. Results in: scrape_results + {dest_label}")
 
     except Exception as e:
         log(f"[!] Pipeline error: {e}")
@@ -643,6 +679,73 @@ async def list_tables():
         return {"tables": [], "error": str(e)}
 
 
+# ── External Databases ───────────────────────────────────────────────────────
+
+class ExternalDBCreate(BaseModel):
+    label:         str
+    supabase_url:  str
+    supabase_key:  str
+    default_table: str = ""
+
+
+@app.get("/external-databases")
+async def list_external_databases():
+    if not db:
+        return {"databases": [], "error": "No DB connection"}
+    try:
+        resp = db.table("external_databases").select("id,label,supabase_url,default_table,created_at").order("created_at").execute()
+        return {"databases": resp.data or []}
+    except Exception as e:
+        return {"databases": [], "error": str(e)}
+
+
+@app.post("/external-databases")
+async def add_external_database(payload: ExternalDBCreate):
+    if not db:
+        return {"error": "No DB connection"}
+    # Validate the credentials actually work before saving
+    try:
+        test_client = create_client(payload.supabase_url, payload.supabase_key)
+        test_client.table("_nonexistent_").select("*").limit(1).execute()
+    except Exception:
+        pass  # Any response (even 404) means we can connect — only network failures are a problem
+    try:
+        resp = db.table("external_databases").insert({
+            "label":         payload.label,
+            "supabase_url":  payload.supabase_url,
+            "supabase_key":  payload.supabase_key,
+            "default_table": payload.default_table,
+        }).execute()
+        return {"ok": True, "database": resp.data[0] if resp.data else {}}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.get("/external-databases/{db_id}/tables")
+async def list_external_db_tables(db_id: str):
+    """List tables in an external Supabase project."""
+    ext_client, rec = _get_external_db_client(db_id)
+    if not ext_client:
+        return {"tables": [], "error": "Could not connect to external database"}
+    try:
+        resp = ext_client.rpc("get_user_tables").execute()
+        tables = [r["table_name"] for r in (resp.data or [])]
+        return {"tables": tables, "label": rec["label"]}
+    except Exception as e:
+        return {"tables": [], "error": f"get_user_tables RPC not available: {e}"}
+
+
+@app.delete("/external-databases/{db_id}")
+async def delete_external_database(db_id: str):
+    if not db:
+        return {"error": "No DB connection"}
+    try:
+        db.table("external_databases").delete().eq("id", db_id).execute()
+        return {"ok": True}
+    except Exception as e:
+        return {"error": str(e)}
+
+
 @app.get("/status")
 def status():
     return {
@@ -676,7 +779,13 @@ async def trigger_scrape(req: ScrapeRequest, background_tasks: BackgroundTasks):
 #  ROUTES — UNIVERSAL SCRAPE
 # ═════════════════════════════════════════════════════════════════════════════
 
-def _start_universal_job(job: dict, label: str = "", background_tasks: BackgroundTasks = None, destination_table: str = "scrape_results"):
+def _start_universal_job(
+    job: dict,
+    label: str = "",
+    background_tasks: BackgroundTasks = None,
+    destination_table: str = "scrape_results",
+    external_db_id: Optional[str] = None,
+):
     """Shared logic: create DB record, enqueue background task, return response."""
     if scrape_state["running"]:
         return {"error": "A scrape is already running. Check /status for progress.", "log": scrape_state["log"]}
@@ -684,12 +793,16 @@ def _start_universal_job(job: dict, label: str = "", background_tasks: Backgroun
     run_id = _create_run_record(job["type"], label)
     scrape_state["run_id"] = run_id
 
-    background_tasks.add_task(asyncio.run, run_universal_pipeline(job, run_id, destination_table))
+    background_tasks.add_task(
+        asyncio.run,
+        run_universal_pipeline(job, run_id, destination_table, external_db_id=external_db_id),
+    )
     return {
         "status":            "started",
         "run_id":            run_id,
         "job_type":          job["type"],
         "destination_table": destination_table,
+        "external_db_id":    external_db_id,
         "message":           f"Job started. Poll /status for live log. Results at /results/{run_id}",
     }
 
@@ -716,7 +829,13 @@ async def universal_scrape(req: UniversalScrapeRequest, background_tasks: Backgr
     }
     """
     job = _build_job_dict(req)
-    return _start_universal_job(job, label=req.category or req.label or req.job_type, background_tasks=background_tasks, destination_table=req.destination_table)
+    return _start_universal_job(
+        job,
+        label=req.category or req.label or req.job_type,
+        background_tasks=background_tasks,
+        destination_table=req.destination_table,
+        external_db_id=req.external_db_id,
+    )
 
 
 @app.post("/scrape/google-maps")
