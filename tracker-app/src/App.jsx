@@ -565,7 +565,7 @@ function BusinessModal({ biz, emailLogs, followUps, feedback, onClose, onStatusC
         onRefresh()
       }
     } catch {
-      showToast('Server offline — start server.py', 'error')
+      showToast('Railway API offline — check Settings tab', 'error')
     }
     setSending(false)
   }
@@ -651,7 +651,7 @@ function BusinessModal({ biz, emailLogs, followUps, feedback, onClose, onStatusC
             <div style={{ fontSize: 12, color: '#e74c3c', marginTop: 8 }}>⚠ No email on file — click ✏ Edit above to add one.</div>
           )}
           {apiStatus !== 'online' && (
-            <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 8 }}>Start the local server to use these.</div>
+            <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 8 }}>Railway API offline — check Settings tab.</div>
           )}
         </Card>
 
@@ -1789,7 +1789,7 @@ export default function App() {
         showToast('Failed to send follow-up', 'error')
       }
     } catch {
-      showToast('Local API offline — start server.py first', 'error')
+      showToast('Railway API offline — check Settings tab', 'error')
     }
   }
 
@@ -1809,7 +1809,7 @@ export default function App() {
         showToast(data.error || 'Reset failed', 'error')
       }
     } catch {
-      showToast('Server offline — start server.py first', 'error')
+      showToast('Railway API offline — check Settings tab', 'error')
     }
   }
 
@@ -1825,7 +1825,7 @@ export default function App() {
       // AdminView's polling will call onScrapeComplete when done.
       return data
     } catch (e) {
-      throw new Error('Could not reach local server. Is server.py running?')
+      throw new Error('Could not reach the Railway API. Check the Settings tab for connection status.')
     }
   }
 
