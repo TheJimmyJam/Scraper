@@ -479,7 +479,14 @@ async def _run_trivia_scraper(job, browser):
         print(f"  → API: {src['url']}")
         try:
             html = await _safe_goto(page, src["url"])
-            data = json.loads(html) if html.strip().startswith("{") or html.strip().startswith("[") else {}
+            # Browsers wrap JSON in <html><body><pre>...</pre></body></html>
+            # Strip that wrapper before parsing
+            raw = html.strip()
+            if not (raw.startswith("{") or raw.startswith("[")):
+                soup_pre = BeautifulSoup(raw, "html.parser")
+                pre = soup_pre.find("pre")
+                raw = pre.get_text(strip=True) if pre else raw
+            data = json.loads(raw) if (raw.startswith("{") or raw.startswith("[")) else {}
 
             rows_key = src.get("results_key")
             rows     = data.get(rows_key, data) if rows_key else data
