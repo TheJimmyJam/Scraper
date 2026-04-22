@@ -1194,6 +1194,7 @@ function SettingsView({ userRole, onResetDb }) {
   const [dbsLoading,   setDbsLoading]   = useState(true)
   const [showAddForm,  setShowAddForm]  = useState(false)
   const [saving,       setSaving]       = useState(false)
+  const [saveError,    setSaveError]    = useState('')
   const [deleteId,     setDeleteId]     = useState(null)
   const [form, setForm] = useState({ label: '', supabase_url: '', supabase_key: '', default_table: '' })
 
@@ -1217,6 +1218,7 @@ function SettingsView({ userRole, onResetDb }) {
   const handleAddDb = async () => {
     if (!form.label || !form.supabase_url || !form.supabase_key) return
     setSaving(true)
+    setSaveError('')
     try {
       const res = await fetch(`${LOCAL_API}/external-databases`, {
         method: 'POST',
@@ -1228,8 +1230,13 @@ function SettingsView({ userRole, onResetDb }) {
         setExtDbs(prev => [...prev, data.database])
         setForm({ label: '', supabase_url: '', supabase_key: '', default_table: '' })
         setShowAddForm(false)
+        setSaveError('')
+      } else {
+        setSaveError(data.error || 'Failed to save. Make sure the external_databases table exists in Supabase.')
       }
-    } catch {}
+    } catch (e) {
+      setSaveError('Could not reach Railway API.')
+    }
     setSaving(false)
   }
 
@@ -1273,6 +1280,9 @@ function SettingsView({ userRole, onResetDb }) {
             <Btn onClick={handleAddDb} disabled={saving || !form.label || !form.supabase_url || !form.supabase_key} style={{ marginTop: 8 }}>
               {saving ? '⏳ Saving...' : '💾 Save Connection'}
             </Btn>
+            {saveError && (
+              <div style={{ fontSize: 12, color: '#e74c3c', marginTop: 8, lineHeight: 1.5 }}>⚠ {saveError}</div>
+            )}
           </div>
         )}
 
