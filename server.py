@@ -828,18 +828,14 @@ async def universal_scrape(req: UniversalScrapeRequest, background_tasks: Backgr
       "category": "General Knowledge"
     }
     """
-    try:
-        job = _build_job_dict(req)
-        return _start_universal_job(
-            job,
-            label=req.category or req.label or req.job_type,
-            background_tasks=background_tasks,
-            destination_table=req.destination_table,
-            external_db_id=req.external_db_id,
-        )
-    except Exception as e:
-        import traceback
-        return JSONResponse(status_code=500, content={"error": str(e), "trace": traceback.format_exc()})
+    job = _build_job_dict(req)
+    return _start_universal_job(
+        job,
+        label=req.category or req.label or req.job_type,
+        background_tasks=background_tasks,
+        destination_table=req.destination_table,
+        external_db_id=req.external_db_id,
+    )
 
 
 @app.post("/scrape/google-maps")

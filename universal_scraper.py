@@ -60,7 +60,7 @@ try:
     from supabase import create_client
     SUPABASE_URL = os.getenv("SUPABASE_URL", "")
     SUPABASE_KEY = os.getenv("SUPABASE_KEY", "")
-    _supabase = create_client(SUPABASE_URL, SUPABASE_KEY) if SUPABASE_URL else None
+    _supabase = create_client(SUPABASE_URL, SUPABASE_KEY) if (SUPABASE_URL and SUPABASE_KEY) else None
 except ImportError:
     _supabase = None
 
